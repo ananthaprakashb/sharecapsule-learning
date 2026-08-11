@@ -84,6 +84,31 @@ export function getAdaptiveFollowUp(profile, model, askedQuestions, answers, cur
   return null
 }
 
+export function getMicroAssessment(profile, competency, askedQuestions = []) {
+  const askedIds = new Set(askedQuestions.map((item) => typeof item === 'string' ? item : item.id))
+  const candidates = diagnosticBank
+    .filter((q) => q.track === profile.track && q.competency === competency)
+    .sort((a, b) => (difficultyRank[b.difficulty] || 2) - (difficultyRank[a.difficulty] || 2))
+  const unseen = candidates.find((q) => !askedIds.has(q.id))
+  const chosen = unseen || candidates[0] || null
+  return chosen ? { ...chosen, adaptiveReason: `Micro-assessment after learning: ${competency}` } : null
+}
+
+export function applyRetestResult(result, competency, isCorrect) {
+  const item = result.competencies.find((entry) => entry.name === competency)
+  if (!item) return result
+  const before = item.score
+  const priorEvidence = Math.max(1, item.total || 1)
+  item.score = Math.round((before * priorEvidence + (isCorrect ? 100 : 0)) / (priorEvidence + 1))
+  item.total = priorEvidence + 1
+  if (isCorrect) item.correct = (item.correct || 0) + 1
+  item.latestRetest = isCorrect ? 'passed' : 'needs more review'
+  item.evidence = item.total >= 3 ? 'Growing evidence' : 'Moderate evidence'
+  result.retests = (result.retests || 0) + 1
+  result.latestRetest = { competency, isCorrect, before, after: item.score }
+  return result
+}
+
 export function scoreDiagnostic(questions, answers, responseTimes = {}, model = null) {
   const stats = new Map()
   const targetMap = model ? targetLookup(model) : new Map()
@@ -143,14 +168,15 @@ export function buildReadiness(profile, result) {
   const weighted = result.competencies.reduce((sum, item) => sum + item.score * item.importance, 0)
   const totalImportance = result.competencies.reduce((sum, item) => sum + item.importance, 0) || 1
   const skillScore = weighted / totalImportance
-  const evidenceFactor = clamp(result.total / 10, 0.45, 1)
+  const evidenceCount = result.total + (result.retests || 0)
+  const evidenceFactor = clamp(evidenceCount / 10, 0.45, 1)
   const timeFactor = clamp(days / 42, 0, 1) * 5
   const readiness = clamp(Math.round(skillScore * (0.88 + 0.07 * evidenceFactor) + timeFactor), 0, 100)
   return {
     readiness,
     days,
     label: readiness >= 80 ? 'Strong position' : readiness >= 60 ? 'Building readiness' : 'Priority gaps remain',
-    confidence: result.total >= 9 ? 'Moderate confidence' : 'Early estimate',
+    confidence: evidenceCount >= 9 ? 'Moderate confidence' : 'Early estimate',
   }
 }
 
@@ -159,10 +185,11 @@ export function buildGapList(result) {
     const gap = 100 - item.score
     const priority = clamp(Math.round(gap * item.importance), 1, 100)
     const missCount = result.misses.filter((miss) => miss.competency === item.name).length
-    const reason = missCount
-      ? `${missCount} miss${missCount === 1 ? '' : 'es'} in ${item.total} measured question${item.total === 1 ? '' : 's'}; target importance ${item.importance.toFixed(2)}×.`
-      : `No miss in the current sample; keep validating as the diagnostic expands.`
-    return { ...item, gap, priority, reason }
+    const diagnosticReason = missCount
+      ? `${missCount} diagnostic miss${missCount === 1 ? '' : 'es'}; target importance ${item.importance.toFixed(2)}×.`
+      : `No diagnostic miss in the current sample; keep validating as evidence grows.`
+    const retestReason = item.latestRetest ? ` Latest learning-block re-test: ${item.latestRetest}.` : ''
+    return { ...item, gap, priority, reason: diagnosticReason + retestReason }
   }).sort((a, b) => b.priority - a.priority)
 }
 
