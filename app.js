@@ -1,179 +1,31 @@
-import { buildDiagnostic, buildGapList, buildPlan, buildReadiness, getAdaptiveFollowUp, scoreDiagnostic } from './engine.js'
+import { applyRetestResult, buildDiagnostic, buildGapList, buildPlan, buildReadiness, getAdaptiveFollowUp, getMicroAssessment, scoreDiagnostic } from './engine.js'
+import { buildLearningPath } from './resources.js'
 
-const app = document.querySelector('#app')
-const initialProfile = {
-  track: '', targetDate: '', daysPerWeek: 5, minutesPerDay: 60,
-  grade: '', subject: '', examName: '', topics: '', currentScore: '', desiredScore: '',
-  company: '', role: '', level: '', experience: '', skills: '', jobDescription: '',
-}
+const app=document.querySelector('#app')
+const base={track:'',targetDate:'',daysPerWeek:5,minutesPerDay:60,grade:'',subject:'',examName:'',topics:'',currentScore:'',desiredScore:'',company:'',role:'',level:'',experience:'',skills:'',jobDescription:''}
+const state={profile:load(),questions:[],answers:{},questionIndex:0,result:null,model:null,maxQuestions:10,startedAt:{},responseTimes:{},learningPath:null,retestAnswers:{},retestFeedback:{}}
+const esc=(v='')=>String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c])
+const today=new Date().toISOString().slice(0,10)
+function load(){try{return{...base,...JSON.parse(localStorage.getItem('prepare-profile')||'{}')}}catch{return{...base}}}
+function save(){localStorage.setItem('prepare-profile',JSON.stringify(state.profile))}
+function progress(step){return `<div class="progress">${['Goal','Diagnostic','Gap analysis','Plan'].map((x,i)=>`<div class="progress-item ${i<=step?'active':''}"><span>${i+1}</span><small>${x}</small></div>`).join('')}</div>`}
+function shell(body,step=0){return `<div class="app-shell"><header class="site-header"><a class="brand" href="#" data-home><span class="brand-mark">S</span><span><b>shareCapsule</b><small>PREPARE</small></span></a><div class="header-note">Diagnose → learn → re-test</div></header><main><section class="hero"><div class="hero-copy"><div class="eyebrow">Prepare for the goal, not just the syllabus.</div><h1>Know the gap.<br><em>Master what matters.</em></h1><p>Set the target and deadline. We diagnose current ability, prioritize gaps, connect attributable resources, and re-test what you learn.</p></div><div class="hero-proof"><span>01</span><p><strong>Model the target.</strong> Role, level, grade and topics shape the test.</p><span>02</span><p><strong>Adapt.</strong> Correct answers get harder; misses trigger prerequisite checks.</p><span>03</span><p><strong>Close the gap.</strong> Study trusted sources, then prove improvement.</p></div></section>${progress(step)}${body}</main><footer><span>ShareCapsule Prepare · Source-backed learning MVP</span><span>Preparation guidance, not an outcome guarantee.</span></footer></div>`}
+function bindHome(){document.querySelector('[data-home]')?.addEventListener('click',e=>{e.preventDefault();renderIntake();scrollTo(0,0)})}
+function field(label,html,hint=''){return `<label class="field"><span>${label}</span>${html}${hint?`<small>${hint}</small>`:''}</label>`}
+function input(name,value,attrs=''){return `<input name="${name}" value="${esc(value)}" ${attrs}>`}
+function area(name,value,placeholder=''){return `<textarea name="${name}" rows="3" placeholder="${placeholder}">${esc(value)}</textarea>`}
 
-const state = {
-  profile: loadProfile(), stage: 'intake', questions: [], answers: {}, questionIndex: 0,
-  result: null, model: null, maxQuestions: 10, startedAt: {}, responseTimes: {},
-}
+function renderIntake(){const p=state.profile;const detail=p.track==='academic'?`<div class="form-grid">${field('Grade level',input('grade',p.grade,'required placeholder="Grade 10"'))}${field('Subject / area',input('subject',p.subject,'required placeholder="Algebra II"'))}${field('Exam / course',input('examName',p.examName,'placeholder="AP Biology / Fall final"'))}${field('Current score',input('currentScore',p.currentScore,'placeholder="72% / B-"'))}${field('Desired result',input('desiredScore',p.desiredScore,'placeholder="90% / A"'))}${field('Topics',area('topics',p.topics,'Quadratics, logarithms, genetics…'),'Specific topics improve targeting.')}</div>`:p.track==='interview'?`<div class="form-grid">${field('Company',input('company',p.company,'required placeholder="Amazon"'))}${field('Target role',input('role',p.role,'required placeholder="Software Development Engineer"'))}${field('Level',input('level',p.level,'placeholder="SDE II / L5"'))}${field('Years of experience',input('experience',p.experience,'type="number" min="0" step="0.5"'))}${field('Key skills',input('skills',p.skills,'placeholder="Java, React, system design"'))}${field('Job description / known focus',area('jobDescription',p.jobDescription,'Paste important job-description details…'),'Used locally to weight competencies.')}</div>`:''
+app.innerHTML=shell(`<section class="panel intake-panel"><div class="eyebrow">Step 1 · Define the target</div><h2>What do you need to be ready for?</h2><p class="lede">We diagnose before recommending content.</p><div class="track-grid"><button class="track-card ${p.track==='academic'?'selected':''}" data-track="academic"><span class="track-icon">A+</span><strong>Academic / Exam</strong><small>Grade-level subjects, finals, certifications and entrance exams.</small></button><button class="track-card ${p.track==='interview'?'selected':''}" data-track="interview"><span class="track-icon">⌘</span><strong>Company / Role Interview</strong><small>Target a company, role, level and interview date.</small></button></div>${p.track?`<form id="intake"><div class="form-grid common-grid">${field(p.track==='academic'?'Target exam date':'Interview date',`<input required type="date" min="${today}" name="targetDate" value="${esc(p.targetDate)}">`)}${field('Study days / week',`<input required min="1" max="7" type="number" name="daysPerWeek" value="${esc(p.daysPerWeek)}">`)}${field('Minutes / day',`<input required min="15" step="15" type="number" name="minutesPerDay" value="${esc(p.minutesPerDay)}">`)}</div>${detail}<div class="privacy-note">This static MVP keeps profile, answers, and progress in your browser.</div><button class="primary-button">Build target & start diagnostic <span>→</span></button></form>`:''}</section>`,0);bindHome();document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{state.profile.track=b.dataset.track;save();renderIntake()});const form=document.querySelector('#intake');if(form){form.oninput=e=>{if(e.target.name){state.profile[e.target.name]=e.target.value;save()}};form.onsubmit=e=>{e.preventDefault();for(const [k,v] of new FormData(form))state.profile[k]=v;save();const s=buildDiagnostic(state.profile,10);Object.assign(state,{model:s.model,questions:s.questions,maxQuestions:s.maxQuestions,answers:{},questionIndex:0,startedAt:{},responseTimes:{},result:null});renderDiagnostic();scrollTo(0,0)}}}
 
-function loadProfile() {
-  try { return { ...initialProfile, ...JSON.parse(localStorage.getItem('prepare-profile') || '{}') } }
-  catch { return { ...initialProfile } }
-}
+function renderDiagnostic(){const q=state.questions[state.questionIndex];if(!q)return renderIntake();if(!state.startedAt[q.id])state.startedAt[q.id]=Date.now();const selected=state.answers[q.id];const rationale=state.model?.competencies.find(x=>x.name===q.competency)?.rationale||'Broad baseline coverage';app.innerHTML=shell(`<section class="panel diagnostic-panel"><div class="diagnostic-head"><div><div class="eyebrow">Adaptive diagnostic · ${state.questionIndex+1} · up to ${state.maxQuestions}</div><h2>${esc(q.competency)}</h2></div><button class="text-button" data-edit>Edit goal</button></div><div class="target-strip"><div><span>Target</span><strong>${esc(state.model?.label)}</strong></div><div><span>Why test this</span><strong>${esc(rationale)}</strong></div></div><div class="meter"><span style="width:${Math.min(100,(state.questionIndex+1)/state.maxQuestions*100)}%"></span></div><div class="question-card"><div class="question-meta"><span>${esc(q.difficulty)}</span><span>${esc(q.competency)}</span>${q.adaptiveReason?`<span class="adaptive-tag">${esc(q.adaptiveReason)}</span>`:''}</div><h3>${esc(q.prompt)}</h3><div class="option-list">${q.options.map((o,i)=>`<button class="option ${selected===i?'chosen':''}" data-option="${i}"><span>${String.fromCharCode(65+i)}</span>${esc(o)}</button>`).join('')}</div></div><div class="diagnostic-actions"><small>Next question may change based on this answer.</small><button class="primary-button compact" data-next ${selected===undefined?'disabled':''}>Continue <span>→</span></button></div></section>`,1);bindHome();document.querySelector('[data-edit]').onclick=renderIntake;const next=document.querySelector('[data-next]');document.querySelectorAll('[data-option]').forEach(b=>b.onclick=()=>{state.answers[q.id]=Number(b.dataset.option);document.querySelectorAll('[data-option]').forEach(x=>x.classList.toggle('chosen',x===b));next.disabled=false});next.onclick=()=>advance(q)}
+function advance(q){if(state.answers[q.id]===undefined)return;state.responseTimes[q.id]??=Math.max(0,Date.now()-state.startedAt[q.id]);const f=getAdaptiveFollowUp(state.profile,state.model,state.questions,state.answers,q,state.maxQuestions);if(f&&state.questions.length<state.maxQuestions&&!state.questions.some(x=>x.id===f.id))state.questions.splice(state.questionIndex+1,0,f);if(state.questionIndex<state.questions.length-1&&state.questionIndex+1<state.maxQuestions){state.questionIndex++;renderDiagnostic();scrollTo(0,0)}else{state.result=scoreDiagnostic(state.questions.slice(0,state.questionIndex+1),state.answers,state.responseTimes,state.model);renderResults();scrollTo(0,0)}}
 
-function saveProfile() { localStorage.setItem('prepare-profile', JSON.stringify(state.profile)) }
-const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[char])
-const today = new Date().toISOString().slice(0, 10)
+function sourceCard(r){return `<article class="source-card"><div class="source-meta"><span>${esc(r.quality)}</span><span>${esc(r.format)}</span></div><strong>${esc(r.title)}</strong><p>${esc(r.description)}</p><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Open ${esc(r.publisher)} ↗</a></article>`}
+function renderResults(){const result=state.result;if(!result)return renderIntake();const readiness=buildReadiness(state.profile,result),gaps=buildGapList(result),plan=buildPlan(state.profile,result),modelItems=state.model?.competencies.slice(0,6)||[];state.learningPath=buildLearningPath(state.profile,gaps,state.model,3);const learn=state.learningPath;app.innerHTML=shell(`<section class="results-wrap"><div class="results-hero panel"><div><div class="eyebrow">Readiness estimate · ${esc(readiness.confidence)}</div><h2>${readiness.readiness}%</h2><strong>${esc(readiness.label)}</strong><p>${readiness.days} day${readiness.days===1?'':'s'} to target. Weighted by target relevance; not an outcome prediction.</p></div><div class="score-ring" style="--score:${readiness.readiness*3.6}deg"><div><b>${result.correct}/${result.total}</b><span>diagnostic</span></div></div></div><div class="panel model-panel"><div><div class="eyebrow">Target competency model</div><h3>${esc(state.model?.label)}</h3><p class="support-copy">${esc(state.model?.source)}</p></div><div class="model-chip-list">${modelItems.map(x=>`<span><b>${esc(x.name)}</b><small>${x.weight.toFixed(2)}× relative weight</small></span>`).join('')}</div></div><div class="results-grid"><div class="panel result-panel"><div class="eyebrow">Measured condition</div><h3>Where to focus first</h3><div class="skill-list">${gaps.map(g=>`<div class="skill-evidence"><div class="skill-row"><div><strong>${esc(g.name)}</strong><span>${g.score}% · ${esc(g.evidence)}</span></div><div class="skill-bar"><span style="width:${Math.max(g.score,4)}%"></span></div><b class="${g.score<60?'risk':'ok'}">${g.score<60?'Priority gap':g.score<80?'Build':'Maintain'}</b></div><p>${esc(g.reason)} ${esc(g.rationale)}</p></div>`).join('')}</div></div><div class="panel result-panel plan-panel"><div class="eyebrow">Deadline-aware plan</div><h3>Allocate available time</h3><p class="support-copy">About <strong>${Math.round(plan.totalMinutes/60)} hours</strong> capacity.</p><div class="focus-list">${plan.focus.map((x,i)=>`<div class="focus-item"><span>${String(i+1).padStart(2,'0')}</span><div><strong>${esc(x.competency)}</strong><small>${esc(x.action)}</small></div><b>${Math.round(x.minutes/6)/10}h</b></div>`).join('')}</div></div></div>${result.misses.length?`<div class="panel evidence-panel"><div><div class="eyebrow">Diagnostic evidence</div><h3>What caused the gaps</h3></div><div class="miss-list">${result.misses.slice(0,6).map(m=>`<details><summary><span>${esc(m.competency)} · ${esc(m.difficulty)}</span>${esc(m.prompt)}</summary><p><b>Your answer:</b> ${esc(m.selected||'No answer')}</p><p><b>Correct:</b> ${esc(m.correctAnswer)}</p><p>${esc(m.explanation)}</p></details>`).join('')}</div></div>`:''}<div class="panel roadmap-panel"><div><div class="eyebrow">Preparation roadmap</div><h3>Use the remaining time</h3></div><div class="phase-grid">${plan.phases.map(([n,d],i)=>`<div class="phase"><span>${i+1}</span><strong>${esc(n)}</strong><p>${esc(d)}</p></div>`).join('')}</div></div><div class="panel source-learning-panel"><div class="source-learning-head"><div><div class="eyebrow">Evidence-backed learning</div><h3>Study the gap, then prove it improved</h3><p class="support-copy">Exact official company/exam sources appear when verified; other resources come from primary documentation, universities, exam providers, and established educational organizations.</p></div><span class="source-badge">${esc(learn.catalogMode)}</span></div>${learn.targetSources.length?`<div class="eyebrow">Target-specific public sources</div><div class="target-source-list">${learn.targetSources.map(sourceCard).join('')}</div>`:`<p class="support-copy">No exact target source is in the reviewed catalog yet; recommendations below are competency-level and are not presented as company-specific evidence.</p>`}<div class="eyebrow">First learning blocks</div><div class="learning-block-list">${learn.blocks.map((b,i)=>`<div class="learning-block"><span>${String(i+1).padStart(2,'0')}</span><div><strong>${esc(b.competency)} · ${b.score}% measured</strong><small>${esc(b.objective)} ${b.resources.length} resource${b.resources.length===1?'':'s'} selected.</small></div><div class="block-actions"><b>~${b.minutes} min</b><button class="secondary-button compact" data-block="${i}" ${b.resources.length?'':'disabled'}>Start block</button></div></div>`).join('')}</div></div><div class="panel next-panel"><div><div class="eyebrow">Current source boundary</div><h3>Attributable now; live research next</h3><p>This release uses a reviewed public-source catalog. A later server-side search service can discover fresh resources for any niche target.</p></div><button class="secondary-button" data-reset>Prepare another goal</button></div></section>`,3);bindHome();document.querySelector('[data-reset]').onclick=reset;document.querySelectorAll('[data-block]').forEach(b=>b.onclick=()=>renderLearning(Number(b.dataset.block)))}
 
-function shell(content, progressStep = 0) {
-  return `<div class="app-shell">
-    <header class="site-header"><a class="brand" href="#" data-action="home"><span class="brand-mark">S</span><span><b>shareCapsule</b><small>PREPARE</small></span></a><div class="header-note">Adaptive diagnostic-first learning</div></header>
-    <main>
-      <section class="hero"><div class="hero-copy"><div class="eyebrow">Prepare for the goal, not just the syllabus.</div><h1>Know the gap.<br><em>Master what matters.</em></h1><p>Tell us where you need to be and when. We’ll measure where you are today, probe weak prerequisites, and turn the difference into a focused preparation plan.</p></div>
-      <div class="hero-proof"><span>01</span><p><strong>Model the target.</strong> Your role, level, grade and topics shape what gets tested.</p><span>02</span><p><strong>Adapt the diagnostic.</strong> Correct answers get harder; misses trigger deeper checks.</p><span>03</span><p><strong>Explain the gap.</strong> See the evidence behind every priority.</p></div></section>
-      ${progress(progressStep)}
-      ${content}
-    </main>
-    <footer><span>ShareCapsule Prepare · Adaptive Phase 1</span><span>Preparation guidance, not an outcome guarantee.</span></footer>
-  </div>`
-}
-
-function progress(step) {
-  return `<div class="progress" aria-label="Preparation progress">${['Goal','Diagnostic','Gap analysis','Plan'].map((label, index) => `<div class="progress-item ${index <= step ? 'active' : ''}"><span>${index + 1}</span><small>${label}</small></div>`).join('')}</div>`
-}
-
-function field(label, inputMarkup, hint = '') { return `<label class="field"><span>${label}</span>${inputMarkup}${hint ? `<small>${hint}</small>` : ''}</label>` }
-function input(name, value, options = '') { return `<input name="${name}" value="${escapeHtml(value)}" ${options}>` }
-function textarea(name, value, rows = 3, placeholder = '') { return `<textarea name="${name}" rows="${rows}" placeholder="${placeholder}">${escapeHtml(value)}</textarea>` }
-
-function renderIntake() {
-  const p = state.profile
-  const trackFields = p.track === 'academic'
-    ? `<div class="form-grid">
-      ${field('Grade level', input('grade', p.grade, 'required placeholder="e.g. Grade 10"'))}
-      ${field('Subject / area', input('subject', p.subject, 'required placeholder="e.g. Algebra II"'))}
-      ${field('Exam / course name', input('examName', p.examName, 'placeholder="e.g. Fall final"'))}
-      ${field('Current score', input('currentScore', p.currentScore, 'placeholder="e.g. 72% or B-"'))}
-      ${field('Desired result', input('desiredScore', p.desiredScore, 'placeholder="e.g. 90% or A"'))}
-      ${field('Topics to cover', textarea('topics', p.topics, 3, 'Quadratics, logarithms, sequences…'), 'Specific topics make the competency model more targeted.')}
-    </div>`
-    : p.track === 'interview'
-      ? `<div class="form-grid">
-        ${field('Company', input('company', p.company, 'required placeholder="e.g. Amazon"'))}
-        ${field('Target role', input('role', p.role, 'required placeholder="e.g. Software Development Engineer"'))}
-        ${field('Level', input('level', p.level, 'placeholder="e.g. SDE II / L5"'))}
-        ${field('Years of experience', input('experience', p.experience, 'type="number" min="0" step="0.5" placeholder="5"'))}
-        ${field('Key skills', input('skills', p.skills, 'placeholder="React, Java, system design…"'))}
-        ${field('Job description / known interview focus', textarea('jobDescription', p.jobDescription, 4, 'Paste the important parts of the job description…'), 'Used locally to weight competencies. Public-source company research comes in the next connected-data phase.')}
-      </div>` : ''
-
-  app.innerHTML = shell(`<section class="panel intake-panel">
-    <div class="eyebrow">Step 1 · Define the target</div><h2>What do you need to be ready for?</h2>
-    <p class="lede">We build a target competency model first, then measure your current condition before recommending what to study.</p>
-    <div class="track-grid">
-      <button type="button" class="track-card ${p.track === 'academic' ? 'selected' : ''}" data-track="academic"><span class="track-icon">A+</span><strong>Academic / Exam</strong><small>Grade-level subjects, finals, certifications and entrance exams.</small></button>
-      <button type="button" class="track-card ${p.track === 'interview' ? 'selected' : ''}" data-track="interview"><span class="track-icon">⌘</span><strong>Company / Role Interview</strong><small>Target a company, role, level and interview date.</small></button>
-    </div>
-    ${p.track ? `<form id="intake-form"><div class="form-grid common-grid">
-      ${field(p.track === 'academic' ? 'Target exam date' : 'Interview date', `<input required type="date" min="${today}" name="targetDate" value="${escapeHtml(p.targetDate)}">`)}
-      ${field('Study days per week', `<input required min="1" max="7" type="number" name="daysPerWeek" value="${escapeHtml(p.daysPerWeek)}">`)}
-      ${field('Minutes available per day', `<input required min="15" step="15" type="number" name="minutesPerDay" value="${escapeHtml(p.minutesPerDay)}">`)}
-    </div>${trackFields}<div class="privacy-note">This version still runs entirely in your browser. Target details are used locally to select and adapt questions; they are not uploaded by this static site.</div>
-    <button class="primary-button" type="submit">Build target & start diagnostic <span>→</span></button></form>` : ''}
-  </section>`, 0)
-  bindCommon()
-  document.querySelectorAll('[data-track]').forEach((button) => button.addEventListener('click', () => {
-    state.profile.track = button.dataset.track; saveProfile(); renderIntake()
-  }))
-  const form = document.querySelector('#intake-form')
-  if (form) {
-    form.addEventListener('input', (event) => { if (event.target.name) { state.profile[event.target.name] = event.target.value; saveProfile() } })
-    form.addEventListener('submit', (event) => {
-      event.preventDefault()
-      const data = new FormData(form); for (const [key, value] of data.entries()) state.profile[key] = value
-      saveProfile()
-      const session = buildDiagnostic(state.profile, 10)
-      state.model = session.model; state.questions = session.questions; state.maxQuestions = session.maxQuestions
-      state.answers = {}; state.questionIndex = 0; state.stage = 'diagnostic'; state.startedAt = {}; state.responseTimes = {}
-      renderDiagnostic(); window.scrollTo({ top: 0, behavior: 'smooth' })
-    })
-  }
-}
-
-function renderDiagnostic() {
-  const q = state.questions[state.questionIndex]
-  if (!q) { state.stage = 'intake'; return renderIntake() }
-  if (!state.startedAt[q.id]) state.startedAt[q.id] = Date.now()
-  const selected = state.answers[q.id]
-  const targetCompetency = state.model?.competencies.find((item) => item.name === q.competency)
-  const progressPercent = Math.min(100, ((state.questionIndex + 1) / state.maxQuestions) * 100)
-  app.innerHTML = shell(`<section class="panel diagnostic-panel">
-    <div class="diagnostic-head"><div><div class="eyebrow">Adaptive diagnostic · Question ${state.questionIndex + 1} · up to ${state.maxQuestions}</div><h2>${escapeHtml(q.competency)}</h2></div><button class="text-button" data-action="edit-goal">Edit goal</button></div>
-    <div class="target-strip"><div><span>Target</span><strong>${escapeHtml(state.model?.label || '')}</strong></div><div><span>Why test this</span><strong>${escapeHtml(targetCompetency?.rationale || 'Broad baseline coverage')}</strong></div></div>
-    <div class="meter"><span style="width:${progressPercent}%"></span></div>
-    <div class="question-card"><div class="question-meta"><span>${escapeHtml(q.difficulty)}</span><span>${escapeHtml(q.competency)}</span>${q.adaptiveReason ? `<span class="adaptive-tag">${escapeHtml(q.adaptiveReason)}</span>` : ''}</div><h3>${escapeHtml(q.prompt)}</h3>
-    <div class="option-list">${q.options.map((option, index) => `<button type="button" class="option ${selected === index ? 'chosen' : ''}" data-option="${index}"><span>${String.fromCharCode(65 + index)}</span>${escapeHtml(option)}</button>`).join('')}</div></div>
-    <div class="diagnostic-actions"><small>Your next question may change based on this answer. Response time is recorded locally as supporting evidence.</small><button class="primary-button compact" data-action="next" ${selected === undefined ? 'disabled' : ''}>Continue <span>→</span></button></div>
-  </section>`, 1)
-  bindCommon()
-  document.querySelector('[data-action="edit-goal"]').addEventListener('click', renderIntake)
-  const nextButton = document.querySelector('[data-action="next"]')
-  document.querySelectorAll('[data-option]').forEach((button) => button.addEventListener('click', () => {
-    state.answers[q.id] = Number(button.dataset.option)
-    document.querySelectorAll('[data-option]').forEach((option) => option.classList.toggle('chosen', option === button))
-    nextButton.disabled = false
-  }))
-  nextButton.addEventListener('click', () => advanceDiagnostic(q))
-}
-
-function advanceDiagnostic(q) {
-  if (state.answers[q.id] === undefined) return
-  if (!state.responseTimes[q.id]) state.responseTimes[q.id] = Math.max(0, Date.now() - state.startedAt[q.id])
-  const followUp = getAdaptiveFollowUp(state.profile, state.model, state.questions, state.answers, q, state.maxQuestions)
-  if (followUp && state.questions.length < state.maxQuestions && !state.questions.some((item) => item.id === followUp.id)) {
-    state.questions.splice(state.questionIndex + 1, 0, followUp)
-  }
-  if (state.questionIndex < state.questions.length - 1 && state.questionIndex + 1 < state.maxQuestions) {
-    state.questionIndex += 1; renderDiagnostic(); window.scrollTo({ top: 0, behavior: 'smooth' })
-  } else {
-    state.result = scoreDiagnostic(state.questions.slice(0, state.questionIndex + 1), state.answers, state.responseTimes, state.model)
-    state.stage = 'results'; renderResults(); window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-}
-
-function renderResults() {
-  const result = state.result
-  const readiness = buildReadiness(state.profile, result)
-  const gaps = buildGapList(result)
-  const plan = buildPlan(state.profile, result)
-  const strongest = [...result.competencies].sort((a, b) => b.score - a.score).slice(0, 2)
-  const modelItems = state.model?.competencies.slice(0, 6) || []
-  app.innerHTML = shell(`<section class="results-wrap">
-    <div class="results-hero panel"><div><div class="eyebrow">Initial readiness estimate · ${escapeHtml(readiness.confidence)}</div><h2>${readiness.readiness}%</h2><strong>${readiness.label}</strong><p>${readiness.days} day${readiness.days === 1 ? '' : 's'} until your target date. This score weights measured competencies by their relevance to the target and remains a preparation indicator—not a prediction of an exam or hiring outcome.</p></div>
-    <div class="score-ring" style="--score:${readiness.readiness * 3.6}deg"><div><b>${result.correct}/${result.total}</b><span>answered</span></div></div></div>
-
-    <div class="panel model-panel"><div><div class="eyebrow">Target competency model</div><h3>${escapeHtml(state.model?.label || 'Your target')}</h3><p class="support-copy">${escapeHtml(state.model?.source || '')}</p></div><div class="model-chip-list">${modelItems.map((item) => `<span><b>${escapeHtml(item.name)}</b><small>${item.weight.toFixed(2)}× relative weight</small></span>`).join('')}</div></div>
-
-    <div class="results-grid"><div class="panel result-panel"><div class="eyebrow">Measured condition</div><h3>Where to focus first</h3><div class="skill-list">
-      ${gaps.map((gap) => `<div class="skill-evidence"><div class="skill-row"><div><strong>${escapeHtml(gap.name)}</strong><span>${gap.score}% · ${gap.evidence}</span></div><div class="skill-bar"><span style="width:${Math.max(gap.score, 4)}%"></span></div><b class="${gap.score < 60 ? 'risk' : 'ok'}">${gap.score < 60 ? 'Priority gap' : gap.score < 80 ? 'Build' : 'Maintain'}</b></div><p>${escapeHtml(gap.reason)} ${escapeHtml(gap.rationale)}</p></div>`).join('')}
-      </div>${strongest.length ? `<p class="support-copy">Current strengths: ${strongest.map((item) => escapeHtml(item.name)).join(' · ')}</p>` : ''}</div>
-      <div class="panel result-panel plan-panel"><div class="eyebrow">Deadline-aware plan</div><h3>Allocate your available time</h3><p class="support-copy">About <strong>${Math.round(plan.totalMinutes / 60)} hours</strong> of preparation capacity at ${escapeHtml(state.profile.daysPerWeek)} day(s)/week × ${escapeHtml(state.profile.minutesPerDay)} min/day.</p>
-      <div class="focus-list">${plan.focus.map((item, index) => `<div class="focus-item"><span>${String(index + 1).padStart(2, '0')}</span><div><strong>${escapeHtml(item.competency)}</strong><small>${escapeHtml(item.action)}</small></div><b>${Math.round(item.minutes / 60 * 10) / 10}h</b></div>`).join('')}</div></div></div>
-
-    ${result.misses.length ? `<div class="panel evidence-panel"><div><div class="eyebrow">Diagnostic evidence</div><h3>What caused the gaps</h3><p class="support-copy">These misses directly contributed to the priorities above. Use them as the first error-review list.</p></div><div class="miss-list">${result.misses.slice(0, 6).map((miss) => `<details><summary><span>${escapeHtml(miss.competency)} · ${escapeHtml(miss.difficulty)}</span>${escapeHtml(miss.prompt)}</summary><p><b>Your answer:</b> ${escapeHtml(miss.selected || 'No answer')}</p><p><b>Correct:</b> ${escapeHtml(miss.correctAnswer)}</p><p>${escapeHtml(miss.explanation)}</p></details>`).join('')}</div></div>` : ''}
-
-    <div class="panel roadmap-panel"><div><div class="eyebrow">Preparation roadmap</div><h3>How the remaining time should change</h3></div><div class="phase-grid">${plan.phases.map(([name, detail], index) => `<div class="phase"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><p>${escapeHtml(detail)}</p></div>`).join('')}</div></div>
-    <div class="panel next-panel"><div><div class="eyebrow">Next intelligence layer</div><h3>Connect evidence-backed learning resources</h3><p>The diagnostic is now target-aware and adaptive. The next implementation can research authoritative public sources for the exact exam/company/role, attach citations to the target model, select videos/documents for each measured gap, and re-test after each learning block.</p></div><button class="secondary-button" data-action="restart">Prepare another goal</button></div>
-  </section>`, 3)
-  bindCommon()
-  document.querySelector('[data-action="restart"]').addEventListener('click', reset)
-}
-
-function reset() {
-  state.profile = { ...initialProfile }; state.stage = 'intake'; state.questions = []; state.answers = {}; state.questionIndex = 0; state.result = null
-  state.model = null; state.startedAt = {}; state.responseTimes = {}
-  localStorage.removeItem('prepare-profile'); renderIntake(); window.scrollTo({ top: 0, behavior: 'smooth' })
-}
-
-function bindCommon() {
-  const home = document.querySelector('[data-action="home"]')
-  if (home) home.addEventListener('click', (event) => { event.preventDefault(); renderIntake(); window.scrollTo({ top: 0, behavior: 'smooth' }) })
-}
-
+function renderLearning(i){const b=state.learningPath?.blocks[i];if(!b)return renderResults();b.retest=getMicroAssessment(state.profile,b.competency,state.questions);app.innerHTML=shell(`<section class="panel learning-session"><div class="eyebrow">Focused learning block</div><h2>${esc(b.competency)}</h2><p class="lede">${esc(b.objective)}</p><div class="session-summary"><div><span>Measured level</span><strong>${b.score}%</strong></div><div><span>Target priority</span><strong>${b.priority}/100</strong></div><div><span>Suggested block</span><strong>~${b.minutes} min</strong></div></div><div class="session-resources">${b.resources.map((r,j)=>`<div class="session-resource"><div><div class="eyebrow">${j+1}. ${esc(r.publisher)}</div><h3>${esc(r.title)}</h3><p>${esc(r.description)}</p></div><div class="resource-side"><span>${esc(r.format)}</span><a class="secondary-button" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Open source ↗</a></div></div>`).join('')}</div><div class="privacy-note">Prepare links to the original source; it does not copy or republish source content.</div><div class="session-actions"><button class="text-button" data-back>← Back to analysis</button><button class="primary-button" data-retest ${b.retest?'':'disabled'}>I've reviewed this — quick check <span>→</span></button></div></section>`,3);bindHome();document.querySelector('[data-back]').onclick=renderResults;if(b.retest)document.querySelector('[data-retest]').onclick=()=>renderRetest(i);scrollTo(0,0)}
+function renderRetest(i){const b=state.learningPath?.blocks[i],q=b?.retest;if(!q)return renderLearning(i);const selected=state.retestAnswers[q.id],fb=state.retestFeedback[q.id];app.innerHTML=shell(`<section class="panel retest-panel"><div class="eyebrow">Micro-assessment · ${esc(b.competency)}</div><h2>Can you retrieve it without the source?</h2><p class="lede">One quick check adds evidence; it does not prove mastery.</p><div class="question-card"><div class="question-meta"><span>${esc(q.difficulty)}</span><span>${esc(q.competency)}</span><span class="adaptive-tag">After learning block</span></div><h3>${esc(q.prompt)}</h3><div class="option-list">${q.options.map((o,j)=>`<button class="option ${selected===j?'chosen':''}" data-ro="${j}" ${fb?'disabled':''}><span>${String.fromCharCode(65+j)}</span>${esc(o)}</button>`).join('')}</div></div>${fb?`<div class="retest-feedback ${fb.correct?'':'bad'}"><strong>${fb.correct?'Correct — evidence moved upward.':'Not yet — keep this gap active.'}</strong><p>${esc(q.explanation)}</p><span class="progress-delta">${fb.before}% → ${fb.after}% measured ${esc(b.competency)}</span></div>`:''}<div class="session-actions"><button class="text-button" data-back>← Back to sources</button>${fb?`<button class="primary-button" data-updated>See updated plan <span>→</span></button>`:`<button class="primary-button" data-submit ${selected===undefined?'disabled':''}>Check answer <span>→</span></button>`}</div></section>`,3);bindHome();document.querySelector('[data-back]').onclick=()=>renderLearning(i);if(fb){document.querySelector('[data-updated]').onclick=renderResults}else{const submit=document.querySelector('[data-submit]');document.querySelectorAll('[data-ro]').forEach(x=>x.onclick=()=>{state.retestAnswers[q.id]=Number(x.dataset.ro);document.querySelectorAll('[data-ro]').forEach(y=>y.classList.toggle('chosen',y===x));submit.disabled=false});submit.onclick=()=>{const correct=Number(state.retestAnswers[q.id])===q.answer,before=state.result.competencies.find(x=>x.name===b.competency)?.score??b.score;applyRetestResult(state.result,b.competency,correct);const after=state.result.competencies.find(x=>x.name===b.competency)?.score??before;state.retestFeedback[q.id]={correct,before,after};storeProgress(b.competency,correct,before,after);renderRetest(i)}}scrollTo(0,0)}
+function storeProgress(competency,passed,before,after){try{const h=JSON.parse(localStorage.getItem('prepare-learning-progress')||'[]');h.push({target:state.model?.label||'',competency,passed,before,after,at:new Date().toISOString()});localStorage.setItem('prepare-learning-progress',JSON.stringify(h.slice(-50)))}catch{}}
+function reset(){Object.assign(state,{profile:{...base},questions:[],answers:{},questionIndex:0,result:null,model:null,startedAt:{},responseTimes:{},learningPath:null,retestAnswers:{},retestFeedback:{}});localStorage.removeItem('prepare-profile');renderIntake();scrollTo(0,0)}
 renderIntake()
