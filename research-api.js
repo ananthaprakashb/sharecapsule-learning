@@ -1,0 +1,71 @@
+const defaultBase = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  ? 'http://localhost:8787'
+  : 'https://api.prepare.sharecapsule.app'
+
+const apiBase = String(window.PREPARE_API_BASE || defaultBase).replace(/\/$/, '')
+
+export async function researchTarget(profile, model, gaps, { timeoutMs = 12000 } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(`${apiBase}/v1/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        profile: {
+          track: profile.track,
+          company: profile.company, role: profile.role, level: profile.level,
+          grade: profile.grade, subject: profile.subject, examName: profile.examName,
+          topics: profile.topics, skills: profile.skills,
+        },
+        competencies: (model?.competencies || []).map(({ name, weight, rationale }) => ({ name, weight, rationale })),
+        gaps: gaps.slice(0, 8).map(({ name, score, priority }) => ({ name, score, priority })),
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || `Research API failed (${response.status})`)
+    return payload
+  } finally { clearTimeout(timer) }
+}
+
+function asLearningResource(source) {
+  return {
+    id: source.id,
+    title: source.title,
+    publisher: source.publisher,
+    url: source.url,
+    format: source.format || 'Live web result',
+    competencies: source.competencies || [],
+    minutes: 25,
+    quality: source.quality || 'Live public source',
+    description: source.description || source.snippet || '',
+    targetEvidence: Boolean(source.targetEvidence),
+    live: true,
+    score: source.score || 0,
+    researchedAt: source.provenance?.researchedAt || '',
+  }
+}
+
+export function mergeLiveResearch(learningPath, research) {
+  if (!research?.sources?.length) return learningPath
+  const live = research.sources.map(asLearningResource)
+  const dedupe = (items) => [...new Map(items.map((item) => [item.url, item])).values()]
+  const targetSources = dedupe([
+    ...live.filter((item) => item.targetEvidence).slice(0, 5),
+    ...(learningPath.targetSources || []),
+  ]).slice(0, 6)
+
+  const blocks = (learningPath.blocks || []).map((block) => {
+    const matching = live.filter((item) => item.competencies.includes(block.competency)).slice(0, 4)
+    return { ...block, resources: dedupe([...matching, ...(block.resources || [])]).slice(0, 5) }
+  })
+
+  return {
+    ...learningPath,
+    catalogMode: research.cache?.hit ? 'Live research cache + reviewed catalog' : 'Fresh live research + reviewed catalog',
+    targetSources,
+    blocks,
+    research,
+  }
+}
