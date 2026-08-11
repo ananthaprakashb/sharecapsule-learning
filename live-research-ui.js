@@ -1,0 +1,169 @@
+import { researchTarget } from './research-api.js'
+
+const memory = new Map()
+let activeKey = ''
+let inFlight = false
+
+function readProfile() {
+  try { return JSON.parse(localStorage.getItem('prepare-profile') || '{}') }
+  catch { return {} }
+}
+
+function readCompetencies() {
+  return [...document.querySelectorAll('.model-chip-list > span')].map((node) => {
+    const name = node.querySelector('b')?.textContent?.trim() || ''
+    const weightText = node.querySelector('small')?.textContent || ''
+    const weight = Number.parseFloat(weightText) || 1
+    return { name, weight }
+  }).filter((item) => item.name)
+}
+
+function readGaps() {
+  return [...document.querySelectorAll('.skill-evidence')].map((node) => {
+    const name = node.querySelector('.skill-row strong')?.textContent?.trim() || ''
+    const scoreText = node.querySelector('.skill-row > div:first-child span')?.textContent || ''
+    const score = Number.parseInt(scoreText, 10) || 0
+    return { name, score, priority: Math.max(1, 100 - score) }
+  }).filter((item) => item.name)
+}
+
+function researchKey(profile, competencies, gaps) {
+  return JSON.stringify({
+    track: profile.track, company: profile.company, role: profile.role, level: profile.level,
+    grade: profile.grade, subject: profile.subject, examName: profile.examName,
+    competencies: competencies.map((x) => [x.name, x.weight]),
+    gaps: gaps.slice(0, 5).map((x) => [x.name, x.score]),
+  })
+}
+
+function createPanel() {
+  let panel = document.querySelector('#live-research-panel')
+  if (panel) return panel
+  const anchor = document.querySelector('.source-learning-panel')
+  if (!anchor) return null
+  panel = document.createElement('section')
+  panel.id = 'live-research-panel'
+  panel.className = 'panel source-learning-panel'
+  anchor.insertAdjacentElement('afterend', panel)
+  return panel
+}
+
+function text(tag, className, value) {
+  const el = document.createElement(tag)
+  if (className) el.className = className
+  el.textContent = value
+  return el
+}
+
+function sourceCard(source) {
+  const card = document.createElement('article')
+  card.className = 'source-card'
+  const meta = document.createElement('div')
+  meta.className = 'source-meta'
+  meta.append(text('span', '', source.quality || 'Live public source'))
+  meta.append(text('span', '', `score ${source.score ?? '—'}`))
+  card.append(meta)
+  card.append(text('strong', '', source.title || source.publisher || 'Source'))
+  card.append(text('p', '', source.description || source.snippet || 'Fresh public result for this preparation target.'))
+  try {
+    const url = new URL(source.url)
+    if (['http:', 'https:'].includes(url.protocol)) {
+      const link = text('a', '', `Open ${source.publisher || url.hostname} ↗`)
+      link.href = url.toString()
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      card.append(link)
+    }
+  } catch {}
+  return card
+}
+
+function renderLoading(panel) {
+  panel.replaceChildren()
+  const head = document.createElement('div')
+  head.className = 'source-learning-head'
+  const copy = document.createElement('div')
+  copy.append(text('div', 'eyebrow', 'Live target research'))
+  copy.append(text('h3', '', 'Checking fresh public sources…'))
+  copy.append(text('p', 'support-copy', 'The reviewed local catalog stays available while Prepare checks current public evidence for this exact target.'))
+  head.append(copy, text('span', 'source-badge', 'Researching'))
+  panel.append(head)
+}
+
+function renderUnavailable(panel, message) {
+  panel.replaceChildren()
+  const head = document.createElement('div')
+  head.className = 'source-learning-head'
+  const copy = document.createElement('div')
+  copy.append(text('div', 'eyebrow', 'Live target research'))
+  copy.append(text('h3', '', 'Reviewed catalog remains active'))
+  copy.append(text('p', 'support-copy', message || 'Live research is not available right now. No learning flow is blocked.'))
+  head.append(copy, text('span', 'source-badge', 'Fallback active'))
+  panel.append(head)
+}
+
+function renderResearch(panel, research) {
+  panel.replaceChildren()
+  const head = document.createElement('div')
+  head.className = 'source-learning-head'
+  const copy = document.createElement('div')
+  copy.append(text('div', 'eyebrow', 'Live target research'))
+  copy.append(text('h3', '', research.target?.label || 'Fresh public evidence'))
+  const mode = research.cache?.hit ? 'Cached recently researched results' : 'Freshly researched public results'
+  copy.append(text('p', 'support-copy', `${mode}. Source authority and target relevance are scored separately; open the original publisher to verify details.`))
+  head.append(copy, text('span', 'source-badge', `${research.sources?.length || 0} live sources`))
+  panel.append(head)
+
+  const strong = (research.sources || []).filter((source) => source.score >= 62).slice(0, 8)
+  if (!strong.length) {
+    panel.append(text('p', 'support-copy', 'The live search returned no sufficiently strong sources. Continue with the reviewed catalog above.'))
+    return
+  }
+  const grid = document.createElement('div')
+  grid.className = 'target-source-list'
+  strong.forEach((source) => grid.append(sourceCard(source)))
+  panel.append(grid)
+  panel.append(text('p', 'support-copy', `Researched ${new Date(research.researchedAt).toLocaleString()}. Provider: ${research.provider?.name || 'web search'}.`))
+}
+
+async function enhanceResults() {
+  const results = document.querySelector('.results-wrap')
+  if (!results) return
+  const panel = createPanel()
+  if (!panel) return
+
+  const profile = readProfile()
+  const competencies = readCompetencies()
+  const gaps = readGaps()
+  if (!profile.track || !competencies.length || !gaps.length) return
+  const key = researchKey(profile, competencies, gaps)
+
+  if (memory.has(key)) {
+    renderResearch(panel, memory.get(key))
+    activeKey = key
+    return
+  }
+  if (inFlight && activeKey === key) return
+  activeKey = key
+  inFlight = true
+  renderLoading(panel)
+  try {
+    const research = await researchTarget(profile, { competencies }, gaps)
+    memory.set(key, research)
+    if (document.querySelector('.results-wrap')) renderResearch(createPanel(), research)
+  } catch (error) {
+    const message = error?.name === 'AbortError'
+      ? 'Live research timed out. Continue with the reviewed sources and retry on a later visit.'
+      : 'Live research service is not configured or reachable yet. Continue with the reviewed sources above.'
+    if (document.querySelector('.results-wrap')) renderUnavailable(createPanel(), message)
+  } finally { inFlight = false }
+}
+
+let queued = false
+const observer = new MutationObserver(() => {
+  if (queued) return
+  queued = true
+  queueMicrotask(() => { queued = false; enhanceResults() })
+})
+observer.observe(document.body, { childList: true, subtree: true })
+enhanceResults()
