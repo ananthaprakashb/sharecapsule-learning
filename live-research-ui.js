@@ -1,8 +1,7 @@
 import { researchTarget } from './research-api.js'
 
 const memory = new Map()
-let activeKey = ''
-let inFlight = false
+let inFlightKey = ''
 
 function readProfile() {
   try { return JSON.parse(localStorage.getItem('prepare-profile') || '{}') }
@@ -53,6 +52,11 @@ function createPanel() {
   return panel
 }
 
+function markPanel(panel, key, state) {
+  panel.dataset.researchKey = key
+  panel.dataset.researchState = state
+}
+
 function text(tag, className, value) {
   const el = document.createElement(tag)
   if (className) el.className = className
@@ -83,7 +87,8 @@ function sourceCard(source) {
   return card
 }
 
-function renderLoading(panel) {
+function renderLoading(panel, key) {
+  markPanel(panel, key, 'loading')
   panel.replaceChildren()
   const head = document.createElement('div')
   head.className = 'source-learning-head'
@@ -95,7 +100,8 @@ function renderLoading(panel) {
   panel.append(head)
 }
 
-function renderUnavailable(panel, message) {
+function renderUnavailable(panel, key, message) {
+  markPanel(panel, key, 'error')
   panel.replaceChildren()
   const head = document.createElement('div')
   head.className = 'source-learning-head'
@@ -107,7 +113,8 @@ function renderUnavailable(panel, message) {
   panel.append(head)
 }
 
-function renderResearch(panel, research) {
+function renderResearch(panel, key, research) {
+  markPanel(panel, key, 'ready')
   panel.replaceChildren()
   const head = document.createElement('div')
   head.className = 'source-learning-head'
@@ -132,8 +139,7 @@ function renderResearch(panel, research) {
 }
 
 async function enhanceResults() {
-  const results = document.querySelector('.results-wrap')
-  if (!results) return
+  if (!document.querySelector('.results-wrap')) return
   const panel = createPanel()
   if (!panel) return
 
@@ -142,26 +148,28 @@ async function enhanceResults() {
   const gaps = readGaps()
   if (!profile.track || !competencies.length || !gaps.length) return
   const key = researchKey(profile, competencies, gaps)
+  const panelState = panel.dataset.researchState
+  if (panel.dataset.researchKey === key && ['loading', 'ready', 'error'].includes(panelState)) return
 
   if (memory.has(key)) {
-    renderResearch(panel, memory.get(key))
-    activeKey = key
+    renderResearch(panel, key, memory.get(key))
     return
   }
-  if (inFlight && activeKey === key) return
-  activeKey = key
-  inFlight = true
-  renderLoading(panel)
+  if (inFlightKey === key) return
+  inFlightKey = key
+  renderLoading(panel, key)
   try {
     const research = await researchTarget(profile, { competencies }, gaps)
     memory.set(key, research)
-    if (document.querySelector('.results-wrap')) renderResearch(createPanel(), research)
+    if (document.querySelector('.results-wrap')) renderResearch(createPanel(), key, research)
   } catch (error) {
     const message = error?.name === 'AbortError'
       ? 'Live research timed out. Continue with the reviewed sources and retry on a later visit.'
       : 'Live research service is not configured or reachable yet. Continue with the reviewed sources above.'
-    if (document.querySelector('.results-wrap')) renderUnavailable(createPanel(), message)
-  } finally { inFlight = false }
+    if (document.querySelector('.results-wrap')) renderUnavailable(createPanel(), key, message)
+  } finally {
+    if (inFlightKey === key) inFlightKey = ''
+  }
 }
 
 let queued = false
