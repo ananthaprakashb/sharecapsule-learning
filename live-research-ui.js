@@ -36,6 +36,11 @@ function researchKey(profile, competencies, gaps) {
   })
 }
 
+function updatePrivacyNotice() {
+  const note = document.querySelector('#intake .privacy-note')
+  if (note) note.textContent = 'Profile, answers, and progress remain in your browser. After the diagnostic, Prepare may send target fields plus competency/gap summaries to the live research API; individual diagnostic answers are not sent.'
+}
+
 function createPanel() {
   let panel = document.querySelector('#live-research-panel')
   if (panel) return panel
@@ -163,7 +168,12 @@ let queued = false
 const observer = new MutationObserver(() => {
   if (queued) return
   queued = true
-  queueMicrotask(() => { queued = false; enhanceResults() })
+  queueMicrotask(() => {
+    queued = false
+    updatePrivacyNotice()
+    enhanceResults()
+  })
 })
 observer.observe(document.body, { childList: true, subtree: true })
+updatePrivacyNotice()
 enhanceResults()
