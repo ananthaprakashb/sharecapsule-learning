@@ -46,10 +46,19 @@ Serper is used first to keep routine query cost low. Brave Search is attempted w
 
 ## Caching
 
-Research packages are cached with the Workers Cache API using a SHA-256 hash of the sanitized target/competency request. The cache stores research results, not raw diagnostic answers.
+Prepare uses two 30-day cache layers with the Workers Cache API:
+
+1. **Per-query cache** — an identical public web search query is reused for 30 days instead of calling Serper/Brave/Tavily again. The cache identity also includes the configured provider set and requested result count.
+2. **Research-package cache** — equivalent target + ordered competency names + ordered gap names reuse the assembled research package for 30 days.
+
+Numeric learner scores and gap-priority values are deliberately excluded from the reusable research-package cache identity. This lets learners with the same research need share public-source research while keeping their measured scores personal to their browser/session.
+
+The cache stores public search results and source metadata, not raw diagnostic answers. `POST /v1/research?refresh=1` bypasses both cache layers and performs fresh provider searches.
+
+`GET /health` reports `researchCacheDays` and `queryCacheDays`, currently both `30`.
 
 The GitHub Pages frontend treats this Worker as progressive enhancement. If the API is unavailable or no provider is configured, Prepare continues with the reviewed static resource catalog.
 
 ## Source provenance
 
-The research pipeline scores source authority separately from target relevance. Results keep their actual search provider, query, provider rank, research time, publisher hostname, authority label, target-evidence flag, and competency matches. Exact company/exam evidence is only labeled target-specific when the source classification supports it.
+The research pipeline scores source authority separately from target relevance. Results keep their actual search provider, query, provider rank, research time, publisher hostname, authority label, target-evidence flag, competency matches, and whether the underlying query came from the 30-day query cache. Exact company/exam evidence is only labeled target-specific when the source classification supports it.
