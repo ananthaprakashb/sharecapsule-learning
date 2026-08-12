@@ -1,4 +1,5 @@
 import { buildLearningPath as buildBaseLearningPath } from './resources.js'
+import { buildSrvusdGrade7LearningPath, isSrvusdGrade7 } from './srvusd-grade7.js'
 
 const r = (id, title, publisher, url, format, competencies, options = {}) => ({
   id, title, publisher, url, format, competencies,
@@ -34,4 +35,7 @@ function campusPath(profile,gaps,model,maxBlocks){
   })
   return {label:model?.label||'Campus placement target',targetSources,blocks,catalogMode:'Campus reviewed-source catalog'}
 }
-export function buildLearningPath(profile,gaps,model,maxBlocks=3){return profile.track==='campus'?campusPath(profile,gaps,model,maxBlocks):buildBaseLearningPath(profile,gaps,model,maxBlocks)}
+export function buildLearningPath(profile,gaps,model,maxBlocks=3){
+  if (isSrvusdGrade7(profile)) return buildSrvusdGrade7LearningPath(profile,gaps,model,maxBlocks)
+  return profile.track==='campus'?campusPath(profile,gaps,model,maxBlocks):buildBaseLearningPath(profile,gaps,model,maxBlocks)
+}
