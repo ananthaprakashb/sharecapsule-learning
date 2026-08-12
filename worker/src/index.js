@@ -1,4 +1,5 @@
-import { researchTarget, sanitizeResearchRequest, validateResearchRequest } from './research.js'
+import { researchTarget, sanitizeResearchRequest, validateResearchRequest } from './research-multi.js'
+import { configuredProviders } from './providers/index.js'
 
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' }
 const maxBodyBytes = 32 * 1024
@@ -49,7 +50,15 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/health') {
-      return responseJson({ ok: true, service: 'sharecapsule-prepare-research', providerConfigured: Boolean(env.BRAVE_SEARCH_API_KEY), time: new Date().toISOString() }, 200, request, env, { 'Cache-Control': 'no-store' })
+      const providers = configuredProviders(env)
+      return responseJson({
+        ok: true,
+        service: 'sharecapsule-prepare-research',
+        providerConfigured: providers.length > 0,
+        providers,
+        providerOrder: ['Serper', 'Brave Search', 'Tavily'],
+        time: new Date().toISOString(),
+      }, 200, request, env, { 'Cache-Control': 'no-store' })
     }
 
     if (request.method !== 'POST' || url.pathname !== '/v1/research') {
@@ -65,7 +74,7 @@ export default {
       validateResearchRequest(body)
       const sanitized = sanitizeResearchRequest(body)
       const cacheHash = await hashPayload(sanitized)
-      const cacheRequest = new Request(`https://research-cache.internal/v1/${cacheHash}`, { method: 'GET' })
+      const cacheRequest = new Request(`https://research-cache.internal/v2/${cacheHash}`, { method: 'GET' })
       const cache = caches.default
       const force = url.searchParams.get('refresh') === '1'
 
@@ -77,7 +86,7 @@ export default {
         }
       }
 
-      if (!env.BRAVE_SEARCH_API_KEY) return responseJson({ error: 'Live search provider is not configured', code: 'SEARCH_PROVIDER_NOT_CONFIGURED' }, 503, request, env)
+      if (!configuredProviders(env).length) return responseJson({ error: 'Live search provider is not configured', code: 'SEARCH_PROVIDER_NOT_CONFIGURED' }, 503, request, env)
       const result = await researchTarget(sanitized, env)
       const cacheable = new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=21600' } })
       ctx.waitUntil(cache.put(cacheRequest, cacheable))
