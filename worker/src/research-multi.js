@@ -3,22 +3,61 @@ import { configuredProviders, searchWithFallback } from './providers/index.js'
 
 export { sanitizeResearchRequest, validateResearchRequest }
 
-export async function researchTarget(body, env) {
+const QUERY_CACHE_SECONDS = 30 * 24 * 60 * 60
+
+async function hashText(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function searchCached(query, env, { count = 8, force = false } = {}) {
+  const providers = configuredProviders(env)
+  const cacheKey = await hashText(JSON.stringify({ version: 1, query, count, providers }))
+  const cacheRequest = new Request(`https://search-cache.internal/v1/${cacheKey}`, { method: 'GET' })
+  const cache = caches.default
+
+  if (!force) {
+    const hit = await cache.match(cacheRequest)
+    if (hit) {
+      const cached = await hit.json()
+      return { ...cached, cacheHit: true }
+    }
+  }
+
+  const batch = await searchWithFallback(query, env, { count })
+  const cacheable = new Response(JSON.stringify(batch), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${QUERY_CACHE_SECONDS}`,
+    },
+  })
+  await cache.put(cacheRequest, cacheable)
+  return { ...batch, cacheHit: false }
+}
+
+export async function researchTarget(body, env, { force = false } = {}) {
   validateResearchRequest(body)
   const request = sanitizeResearchRequest(body)
   const queries = buildQueries(request)
   const batches = await Promise.all(queries.map(async (query) => {
-    const batch = await searchWithFallback(query, env, { count: 8 })
-    return batch.results.map((result) => ({ ...result, query, provider: batch.provider }))
+    const batch = await searchCached(query, env, { count: 8, force })
+    return {
+      query,
+      provider: batch.provider,
+      cacheHit: batch.cacheHit,
+      results: batch.results.map((result) => ({ ...result, query, provider: batch.provider, queryCacheHit: batch.cacheHit })),
+    }
   }))
 
-  const rawSources = batches.flat()
+  const rawSources = batches.flatMap((batch) => batch.results)
   const providerByUrl = new Map(rawSources.map((source) => [source.url, source.provider]))
+  const queryCacheByUrl = new Map(rawSources.map((source) => [source.url, source.queryCacheHit]))
   const sources = rankSources(rawSources, request).map((source) => ({
     ...source,
     provenance: {
       ...source.provenance,
       provider: providerByUrl.get(source.url) || source.provenance?.provider || 'Web search',
+      queryCacheHit: Boolean(queryCacheByUrl.get(source.url)),
     },
   }))
 
@@ -32,8 +71,9 @@ export async function researchTarget(body, env) {
   }
 
   const usedProviders = [...new Set(sources.map((source) => source.provenance?.provider).filter(Boolean))]
+  const queryCacheHits = batches.filter((batch) => batch.cacheHit).length
   return {
-    version: 2,
+    version: 3,
     target: {
       label: request.profile.track === 'interview'
         ? [request.profile.company, request.profile.role, request.profile.level].filter(Boolean).join(' · ')
@@ -47,6 +87,11 @@ export async function researchTarget(body, env) {
     },
     researchedAt: new Date().toISOString(),
     queries,
+    queryCache: {
+      ttlDays: 30,
+      hits: queryCacheHits,
+      misses: batches.length - queryCacheHits,
+    },
     sources,
     evidenceByCompetency: evidence,
     warnings: sources.length ? [] : ['No usable public sources were returned. Use the reviewed local catalog and retry later.'],
