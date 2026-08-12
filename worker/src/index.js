@@ -1,0 +1,141 @@
+import { researchTarget, sanitizeResearchRequest, validateResearchRequest } from './research-multi.js'
+import { configuredProviders } from './providers/index.js'
+import { signReportMeta, verifyReportEnvelope } from './report-integrity.js'
+
+const jsonHeaders = { 'Content-Type':'application/json; charset=utf-8', 'X-Content-Type-Options':'nosniff' }
+const RESEARCH_CACHE_SECONDS = 30 * 24 * 60 * 60
+
+function allowedOrigins(env) {
+  return new Set(String(env.ALLOWED_ORIGINS || 'https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080').split(',').map((x) => x.trim()).filter(Boolean))
+}
+function corsHeaders(request, env) {
+  const origin = request.headers.get('Origin') || '', allowed = allowedOrigins(env)
+  if (!origin || !allowed.has(origin)) return {}
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  }
+}
+function responseJson(value, status, request, env, extra = {}) {
+  return new Response(JSON.stringify(value), { status, headers: { ...jsonHeaders, ...corsHeaders(request, env), ...extra } })
+}
+async function hashPayload(payload) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(payload)))
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2,'0')).join('')
+}
+function researchCacheIdentity(sanitized) {
+  const { profile, competencies, gaps } = sanitized
+  return {
+    version: 4,
+    target: {
+      track:profile.track, company:profile.company, role:profile.role, level:profile.level,
+      grade:profile.grade, subject:profile.subject, examName:profile.examName, topics:profile.topics, skills:profile.skills,
+      degree:profile.degree, branch:profile.branch, semester:profile.semester, graduationYear:profile.graduationYear,
+      companies:profile.companies, programmingLanguages:profile.programmingLanguages, projects:profile.projects,
+    },
+    competencyOrder: competencies.slice().sort((a,b) => b.weight-a.weight).map((item) => item.name),
+    gapOrder: gaps.slice().sort((a,b) => b.priority-a.priority).map((item) => item.name),
+  }
+}
+async function readJson(request, maxBytes = 32 * 1024) {
+  const contentLength = Number(request.headers.get('Content-Length') || 0)
+  if (contentLength > maxBytes) throw new Error('Request body is too large')
+  const text = await request.text()
+  if (new TextEncoder().encode(text).length > maxBytes) throw new Error('Request body is too large')
+  return JSON.parse(text || '{}')
+}
+function requireJson(request, env) {
+  const origin = request.headers.get('Origin') || ''
+  if (origin && !allowedOrigins(env).has(origin)) return responseJson({ error:'Origin not allowed' }, 403, request, env)
+  if (!String(request.headers.get('Content-Type') || '').toLowerCase().includes('application/json')) return responseJson({ error:'Content-Type must be application/json' }, 415, request, env)
+  return null
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url)
+    if (request.method === 'OPTIONS') {
+      const origin = request.headers.get('Origin') || ''
+      if (origin && !allowedOrigins(env).has(origin)) return responseJson({ error:'Origin not allowed' }, 403, request, env)
+      return new Response(null, { status:204, headers:corsHeaders(request, env) })
+    }
+
+    if (request.method === 'GET' && url.pathname === '/health') {
+      const providers = configuredProviders(env)
+      return responseJson({
+        ok:true,
+        service:'sharecapsule-prepare-research',
+        providerConfigured:providers.length > 0,
+        providers,
+        providerOrder:['Serper','Brave Search','Tavily'],
+        researchCacheDays:30,
+        queryCacheDays:30,
+        supportedTracks:['academic','interview','campus'],
+        reportSigningConfigured:Boolean(env.REPORT_SIGNING_SECRET),
+        reportSchemaVersion:1,
+        time:new Date().toISOString(),
+      }, 200, request, env, { 'Cache-Control':'no-store' })
+    }
+
+    if (request.method === 'POST' && url.pathname === '/v1/report/sign') {
+      const rejected = requireJson(request, env)
+      if (rejected) return rejected
+      if (!env.REPORT_SIGNING_SECRET) return responseJson({ error:'Report signing is not configured', code:'REPORT_SIGNING_NOT_CONFIGURED' }, 503, request, env, { 'Cache-Control':'no-store' })
+      try {
+        const meta = await readJson(request, 8 * 1024)
+        const signed = await signReportMeta(meta, env.REPORT_SIGNING_SECRET)
+        return responseJson(signed, 200, request, env, { 'Cache-Control':'no-store' })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Report signing failed'
+        return responseJson({ error:message, code:'INVALID_REPORT_METADATA' }, 400, request, env, { 'Cache-Control':'no-store' })
+      }
+    }
+
+    if (request.method === 'POST' && url.pathname === '/v1/report/verify') {
+      const rejected = requireJson(request, env)
+      if (rejected) return rejected
+      if (!env.REPORT_SIGNING_SECRET) return responseJson({ error:'Report verification is not configured', code:'REPORT_SIGNING_NOT_CONFIGURED' }, 503, request, env, { 'Cache-Control':'no-store' })
+      try {
+        const envelope = await readJson(request, 128 * 1024)
+        const verification = await verifyReportEnvelope(envelope, env.REPORT_SIGNING_SECRET)
+        return responseJson(verification, verification.valid ? 200 : 422, request, env, { 'Cache-Control':'no-store' })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Report verification failed'
+        return responseJson({ valid:false, reason:message }, 400, request, env, { 'Cache-Control':'no-store' })
+      }
+    }
+
+    if (request.method !== 'POST' || url.pathname !== '/v1/research') return responseJson({ error:'Not found' }, 404, request, env)
+    const rejected = requireJson(request, env)
+    if (rejected) return rejected
+
+    try {
+      const body = await readJson(request)
+      validateResearchRequest(body)
+      const sanitized = sanitizeResearchRequest(body)
+      const cacheHash = await hashPayload(researchCacheIdentity(sanitized))
+      const cacheRequest = new Request(`https://research-cache.internal/v4/${cacheHash}`, { method:'GET' })
+      const cache = caches.default
+      const force = url.searchParams.get('refresh') === '1'
+      if (!force) {
+        const hit = await cache.match(cacheRequest)
+        if (hit) {
+          const cached = await hit.json()
+          return responseJson({ ...cached, cache:{ hit:true, key:cacheHash.slice(0,12), ttlDays:30 } }, 200, request, env, { 'Cache-Control':'private, max-age=60' })
+        }
+      }
+      if (!configuredProviders(env).length) return responseJson({ error:'Live search provider is not configured', code:'SEARCH_PROVIDER_NOT_CONFIGURED' }, 503, request, env)
+      const result = await researchTarget(sanitized, env, { force })
+      const cacheable = new Response(JSON.stringify(result), { headers:{ 'Content-Type':'application/json', 'Cache-Control':`public, max-age=${RESEARCH_CACHE_SECONDS}` } })
+      ctx.waitUntil(cache.put(cacheRequest, cacheable))
+      return responseJson({ ...result, cache:{ hit:false, key:cacheHash.slice(0,12), ttlDays:30 } }, 200, request, env, { 'Cache-Control':'private, max-age=60' })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Research failed'
+      const status = /required|must be|Too many|too large|JSON/.test(message) ? 400 : 502
+      return responseJson({ error:message, code:status === 400 ? 'INVALID_REQUEST' : 'RESEARCH_FAILED' }, status, request, env, { 'Cache-Control':'no-store' })
+    }
+  },
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sharecapsule-prepare-research",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-10",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "api.prepare.sharecapsule.app",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080"
+  },
+  "secrets": {
+    "required": ["BRAVE_SEARCH_API_KEY"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
