@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { buildQueries, rankSources, sanitizeResearchRequest, targetLabel, validateResearchRequest } from '../src/research-school.js'
+
+const browserSource=await readFile(new URL('../../srvusd-grade7.js',import.meta.url),'utf8')
+const browserCurriculum=await import(`data:text/javascript;base64,${Buffer.from(browserSource).toString('base64')}`)
 
 const course2 = {
   profile: {
@@ -13,6 +17,27 @@ const course2 = {
   ],
   gaps:[{name:'Ratios & proportional relationships',score:45,priority:70}],
 }
+
+test('browser curriculum selects Course 2, Course 3, and science models', () => {
+  const base={track:'academic',grade:'Grade 7',district:'San Ramon Valley Unified School District'}
+  const c2=browserCurriculum.buildSrvusdGrade7Model({...base,subject:'Mathematics',curriculumTrack:'Course 2 Math'})
+  const c3=browserCurriculum.buildSrvusdGrade7Model({...base,subject:'Mathematics',curriculumTrack:'Course 3 Math'})
+  const science=browserCurriculum.buildSrvusdGrade7Model({...base,subject:'Science',curriculumTrack:'Grade 7 Integrated / Life Science'})
+  assert.ok(c2.competencies.some((x)=>x.name==='Ratios & proportional relationships'))
+  assert.ok(c3.competencies.some((x)=>x.name==='Linear functions & systems'))
+  assert.ok(science.competencies.some((x)=>x.name==='Genetics, adaptation & inheritance'))
+  assert.equal(c2.competencies.length,5)
+  assert.equal(c3.competencies.length,5)
+  assert.equal(science.competencies.length,5)
+})
+
+test('browser curriculum has adaptive coverage for all three Grade 7 paths', () => {
+  const bank=browserCurriculum.srvusdGrade7DiagnosticBank
+  assert.ok(bank.filter((q)=>q.id.startsWith('sr7-c2-')).length>=10)
+  assert.ok(bank.filter((q)=>q.id.startsWith('sr7-c3-')).length>=10)
+  assert.ok(bank.filter((q)=>q.id.startsWith('sr7-sci-')).length>=10)
+  assert.ok(browserCurriculum.isSrvusdGrade7(course2.profile))
+})
 
 test('preserves SRVUSD curriculum metadata during sanitization', () => {
   validateResearchRequest(course2)
