@@ -29,10 +29,11 @@ async function hashPayload(payload) {
 function researchCacheIdentity(sanitized) {
   const { profile, competencies, gaps } = sanitized
   return {
-    version: 4,
+    version: 5,
     target: {
       track:profile.track, company:profile.company, role:profile.role, level:profile.level,
       grade:profile.grade, subject:profile.subject, examName:profile.examName, topics:profile.topics, skills:profile.skills,
+      district:profile.district, school:profile.school, curriculumTrack:profile.curriculumTrack,
       degree:profile.degree, branch:profile.branch, semester:profile.semester, graduationYear:profile.graduationYear,
       companies:profile.companies, programmingLanguages:profile.programmingLanguages, projects:profile.projects,
     },
@@ -74,6 +75,7 @@ export default {
         researchCacheDays:30,
         queryCacheDays:30,
         supportedTracks:['academic','interview','campus'],
+        supportedCurriculumProfiles:['SRVUSD Grade 7 Course 2 Math','SRVUSD Grade 7 Course 3 Math','SRVUSD Grade 7 Science'],
         reportSigningConfigured:Boolean(env.REPORT_SIGNING_SECRET),
         reportSchemaVersion:1,
         time:new Date().toISOString(),
@@ -117,7 +119,7 @@ export default {
       validateResearchRequest(body)
       const sanitized = sanitizeResearchRequest(body)
       const cacheHash = await hashPayload(researchCacheIdentity(sanitized))
-      const cacheRequest = new Request(`https://research-cache.internal/v4/${cacheHash}`, { method:'GET' })
+      const cacheRequest = new Request(`https://research-cache.internal/v5/${cacheHash}`, { method:'GET' })
       const cache = caches.default
       const force = url.searchParams.get('refresh') === '1'
       if (!force) {

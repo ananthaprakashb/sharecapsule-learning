@@ -1,6 +1,7 @@
 import { diagnosticBank, difficultyRank, fallbackQuestions } from './diagnostics.js'
 import { campusDiagnosticBank } from './campus-diagnostics.js'
-import { buildTargetModel } from './target-model.js'
+import { buildTargetModel as buildBaseTargetModel } from './target-model.js'
+import { buildSrvusdGrade7Model, isSrvusdGrade7, srvusdGrade7DiagnosticBank } from './srvusd-grade7.js'
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 const difficultyWeight = { foundation: 0.85, core: 1, advanced: 1.2 }
@@ -12,11 +13,16 @@ export function daysUntil(dateString, now = new Date()) {
   return Math.max(0, Math.ceil(diff / 86400000))
 }
 
+function buildTargetModel(profile) {
+  return isSrvusdGrade7(profile) ? buildSrvusdGrade7Model(profile) : buildBaseTargetModel(profile)
+}
+
 function targetLookup(model) { return new Map(model.competencies.map((item) => [item.name, item])) }
 
-function questionPool(track) {
-  if (track === 'campus') return [...campusDiagnosticBank, ...diagnosticBank.filter((item) => item.track === 'interview')]
-  return diagnosticBank.filter((item) => item.track === track)
+function questionPool(profile) {
+  if (profile.track === 'campus') return [...campusDiagnosticBank, ...diagnosticBank.filter((item) => item.track === 'interview')]
+  if (isSrvusdGrade7(profile)) return srvusdGrade7DiagnosticBank
+  return diagnosticBank.filter((item) => item.track === profile.track)
 }
 
 function relevanceScore(question, haystack, targetMap, desiredDifficulty) {
@@ -31,12 +37,13 @@ export function buildDiagnostic(profile, maxQuestions = 10) {
   const model = buildTargetModel(profile)
   const track = profile.track
   const haystack = [profile.subject, profile.topics, profile.examName, profile.company, profile.role, profile.level, profile.skills, profile.jobDescription,
-    profile.degree, profile.branch, profile.semester, profile.companies, profile.programmingLanguages, profile.projects]
+    profile.degree, profile.branch, profile.semester, profile.companies, profile.programmingLanguages, profile.projects,
+    profile.district, profile.school, profile.curriculumTrack]
     .filter(Boolean).join(' ').toLowerCase()
   const targetMap = targetLookup(model)
-  const pool = questionPool(track)
+  const pool = questionPool(profile)
   const chosen = []
-  const initialCoverage = track === 'campus' ? 10 : 6
+  const initialCoverage = track === 'campus' ? 10 : isSrvusdGrade7(profile) ? 5 : 6
 
   for (const competency of model.competencies.slice(0, initialCoverage)) {
     const candidates = pool
@@ -56,7 +63,7 @@ export function buildDiagnostic(profile, maxQuestions = 10) {
   }
 
   if (!chosen.length) {
-    const fallback = track === 'campus' ? campusDiagnosticBank : (fallbackQuestions[track] || [])
+    const fallback = track === 'campus' ? campusDiagnosticBank : isSrvusdGrade7(profile) ? srvusdGrade7DiagnosticBank : (fallbackQuestions[track] || [])
     chosen.push(...fallback.slice(0, Math.min(maxQuestions, 5)))
   }
   return { model, questions: chosen.slice(0, maxQuestions), maxQuestions }
@@ -68,7 +75,7 @@ export function getAdaptiveFollowUp(profile, model, askedQuestions, answers, cur
   const isCorrect = Number(answers[currentQuestion.id]) === currentQuestion.answer
   const currentRank = difficultyRank[currentQuestion.difficulty] || 2
   const sameCompetencyCount = askedQuestions.filter((q) => q.competency === currentQuestion.competency).length
-  const trackPool = questionPool(profile.track).filter((q) => !askedIds.has(q.id))
+  const trackPool = questionPool(profile).filter((q) => !askedIds.has(q.id))
 
   if (!isCorrect && currentQuestion.prerequisites?.length) {
     for (const prerequisite of currentQuestion.prerequisites) {
@@ -89,7 +96,7 @@ export function getAdaptiveFollowUp(profile, model, askedQuestions, answers, cur
 
 export function getMicroAssessment(profile, competency, askedQuestions = []) {
   const askedIds = new Set(askedQuestions.map((item) => typeof item === 'string' ? item : item.id))
-  const candidates = questionPool(profile.track).filter((q) => q.competency === competency)
+  const candidates = questionPool(profile).filter((q) => q.competency === competency)
     .sort((a, b) => (difficultyRank[b.difficulty] || 2) - (difficultyRank[a.difficulty] || 2))
   const chosen = candidates.find((q) => !askedIds.has(q.id)) || candidates[0] || null
   return chosen ? { ...chosen, adaptiveReason: `Micro-assessment after learning: ${competency}` } : null
