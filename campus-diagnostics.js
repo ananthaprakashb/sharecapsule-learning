@@ -3,7 +3,7 @@ const q = (id, competency, difficulty, prompt, options, answer, explanation, key
 })
 
 export const campusDiagnosticBank = [
-  q('c-quant-1','campus','Quantitative aptitude','foundation','A product price increases from ₹800 to ₹920. What is the percentage increase?',['10%','12%','15%','20%'],2,'The increase is ₹120; 120 ÷ 800 = 0.15 = 15%.',['aptitude','quantitative','percentage','numerical']),
+  q('c-quant-1','Quantitative aptitude','foundation','A product price increases from ₹800 to ₹920. What is the percentage increase?',['10%','12%','15%','20%'],2,'The increase is ₹120; 120 ÷ 800 = 0.15 = 15%.',['aptitude','quantitative','percentage','numerical']),
   q('c-quant-2','Quantitative aptitude','core','A can finish a task in 12 days and B in 18 days. Working together, how long do they take?',['6 days','7.2 days','9 days','15 days'],1,'Combined rate = 1/12 + 1/18 = 5/36 task/day, so time = 36/5 = 7.2 days.',['aptitude','quantitative','time work','numerical']),
   q('c-reason-1','Logical reasoning','foundation','All APIs are interfaces. Some interfaces are public. Which conclusion is guaranteed?',['All APIs are public','Some APIs are public','No APIs are public','No conclusion about whether any API is public follows'],3,'The statements do not say that any API belongs to the public-interface subset.',['reasoning','logical','syllogism']),
   q('c-reason-2','Logical reasoning','core','Find the next number: 2, 6, 12, 20, 30, ?',['36','40','42','44'],2,'The differences are 4, 6, 8, 10, so the next difference is 12 and the answer is 42.',['reasoning','logical','sequence']),
