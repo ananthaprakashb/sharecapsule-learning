@@ -12,8 +12,12 @@ function applyShareCapsuleBrand() {
       logo.setAttribute('aria-hidden', 'true')
       mark.replaceWith(logo)
     }
+
     const wordmark = brand.querySelector('b, strong')
-    if (wordmark && /sharecapsule/i.test(wordmark.textContent || '')) wordmark.textContent = 'ShareCapsule'
+    const currentWordmark = wordmark?.textContent?.trim() || ''
+    if (wordmark && currentWordmark !== 'ShareCapsule' && /sharecapsule/i.test(currentWordmark)) {
+      wordmark.textContent = 'ShareCapsule'
+    }
   })
 }
 
@@ -27,5 +31,6 @@ const observer = new MutationObserver(() => {
   })
 })
 
-observer.observe(document.body, { childList: true, subtree: true })
+const observedRoot = document.querySelector('#app') || document.body
+observer.observe(observedRoot, { childList: true, subtree: true })
 applyShareCapsuleBrand()
