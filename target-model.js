@@ -1,7 +1,8 @@
 const normalize = (value = '') => String(value).trim().toLowerCase()
 const hasAny = (text, words) => words.some((word) => text.includes(word))
-
 const competency = (name, weight, rationale, keywords = []) => ({ name, weight, rationale, keywords })
+
+export const DEFAULT_CAMPUS_COMPANIES = ['TCS','Cognizant','Infosys','HCLTech','Wipro','Accenture','Capgemini','Tech Mahindra']
 
 const interviewFamilies = [
   {
@@ -99,6 +100,21 @@ const academicFamilies = [
   },
 ]
 
+const campusCompetencies = [
+  competency('Programming fundamentals', 1.22, 'Entry-level technology hiring needs reliable coding fundamentals before advanced problem solving.', ['c','c++','java','python','programming','coding']),
+  competency('Problem solving', 1.18, 'Campus assessments reward translating a prompt into a correct, testable solution.', ['problem','coding','debug']),
+  competency('Quantitative aptitude', 1.16, 'Numerical aptitude is a common shared screening skill across large campus-hiring programs.', ['aptitude','quantitative','numerical','percentage']),
+  competency('Logical reasoning', 1.14, 'Logical and analytical reasoning are common shared screening skills for graduate hiring.', ['reasoning','logical','analytical']),
+  competency('Algorithms', 1.08, 'Algorithmic thinking supports coding assessments and technical interviews.', ['algorithm','coding','complexity']),
+  competency('Data structures', 1.02, 'Arrays, hashing, stacks, queues, trees, and related structures are core coding foundations.', ['data structure','array','tree','hash']),
+  competency('Object-oriented programming', 1.02, 'OOP concepts are foundational for Java/C++-heavy graduate engineering roles.', ['oop','object oriented','java','c++']),
+  competency('Data & SQL', 0.98, 'Database fundamentals and SQL are common entry-level technical interview topics.', ['sql','database','dbms','data']),
+  competency('Operating systems', 0.9, 'Processes, memory, scheduling, and concurrency form a useful core-CS interview baseline.', ['operating system','os','process','memory']),
+  competency('Networking', 0.86, 'TCP/IP, HTTP, DNS, and network fundamentals support broad IT interview readiness.', ['network','tcp','http','dns']),
+  competency('Verbal communication', 0.9, 'Verbal clarity matters in aptitude screens, group interactions, and interviews.', ['verbal','english','communication']),
+  competency('Behavioral communication', 0.88, 'Campus interviews require concise project stories, teamwork examples, and professional motivation.', ['behavioral','hr','communication','project']),
+]
+
 function seniorityFactor(level = '', experience = '') {
   const text = normalize(level)
   const years = Number(experience || 0)
@@ -108,24 +124,47 @@ function seniorityFactor(level = '', experience = '') {
   return 1
 }
 
+function campusCompanies(profile) {
+  const values = String(profile.companies || '').split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)
+  return values.length ? values : DEFAULT_CAMPUS_COMPANIES
+}
+
+function campusLabel(profile) {
+  const degree = profile.degree || 'B.Tech'
+  const branch = profile.branch || 'Information Technology'
+  const companies = campusCompanies(profile)
+  const companyText = companies.length > 4 ? `${companies.slice(0, 4).join(', ')} +${companies.length - 4} more` : companies.join(', ')
+  return `${degree} ${branch} · Campus Placement · ${companyText}`
+}
+
 export function buildTargetModel(profile) {
   const track = profile.track
-  const text = [profile.subject, profile.examName, profile.topics, profile.role, profile.level, profile.skills, profile.jobDescription]
+  const text = [profile.subject, profile.examName, profile.topics, profile.role, profile.level, profile.skills, profile.jobDescription,
+    profile.degree, profile.branch, profile.semester, profile.companies, profile.programmingLanguages, profile.projects]
     .filter(Boolean).join(' ').toLowerCase()
-  const families = track === 'interview' ? interviewFamilies : academicFamilies
-  const matches = families.filter((family) => hasAny(text, family.match))
-  const selected = matches.length ? matches : [track === 'interview' ? interviewFamilies[3] : academicFamilies[0]]
-  const merged = new Map()
 
+  let selected
+  if (track === 'campus') selected = [{ competencies: campusCompetencies }]
+  else {
+    const families = track === 'interview' ? interviewFamilies : academicFamilies
+    const matches = families.filter((family) => hasAny(text, family.match))
+    selected = matches.length ? matches : [track === 'interview' ? interviewFamilies[3] : academicFamilies[0]]
+  }
+
+  const merged = new Map()
   selected.flatMap((family) => family.competencies).forEach((item) => {
     const existing = merged.get(item.name)
     if (!existing || item.weight > existing.weight) merged.set(item.name, { ...item })
   })
 
-  const explicit = normalize(track === 'interview' ? `${profile.skills} ${profile.jobDescription}` : profile.topics)
+  const explicit = normalize(track === 'interview'
+    ? `${profile.skills} ${profile.jobDescription}`
+    : track === 'campus'
+      ? `${profile.programmingLanguages} ${profile.skills} ${profile.projects} ${profile.companies}`
+      : profile.topics)
   const seniority = track === 'interview' ? seniorityFactor(profile.level, profile.experience) : 1
   const competencies = [...merged.values()].map((item) => {
-    const explicitBoost = item.keywords.some((keyword) => explicit.includes(keyword)) ? 1.18 : 1
+    const explicitBoost = item.keywords.some((keyword) => explicit.includes(keyword)) ? 1.12 : 1
     let weight = item.weight * explicitBoost
     if (track === 'interview' && item.name === 'System design') weight *= seniority
     return { ...item, weight: Number(weight.toFixed(2)) }
@@ -133,16 +172,21 @@ export function buildTargetModel(profile) {
 
   const label = track === 'interview'
     ? [profile.company, profile.role, profile.level].filter(Boolean).join(' · ')
-    : [profile.grade, profile.subject, profile.examName].filter(Boolean).join(' · ')
+    : track === 'campus'
+      ? campusLabel(profile)
+      : [profile.grade, profile.subject, profile.examName].filter(Boolean).join(' · ')
 
   const levelText = normalize(profile.level)
   const difficulty = track === 'interview' && (seniority > 1.1 || hasAny(levelText, ['staff', 'principal'])) ? 'advanced' : 'core'
 
   return {
     track,
-    label: label || (track === 'interview' ? 'Interview target' : 'Academic target'),
+    label: label || (track === 'interview' ? 'Interview target' : track === 'campus' ? 'Campus placement target' : 'Academic target'),
     difficulty,
     competencies,
-    source: 'Built from the target details you provided. Company-specific public-source research is not yet used in this client-only phase.',
+    companies: track === 'campus' ? campusCompanies(profile) : undefined,
+    source: track === 'campus'
+      ? 'Built from a broad B.Tech/IT campus-placement baseline. Live public-source research is used after the diagnostic to refresh company-specific evidence.'
+      : 'Built from the target details you provided. Live public-source research can enrich the target after the diagnostic.',
   }
 }
