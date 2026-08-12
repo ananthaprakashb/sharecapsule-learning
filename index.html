@@ -34,6 +34,7 @@
   <script type="module">
     const app = document.querySelector('#app')
     const build = '20260812-1738'
+    const safeMode = new URLSearchParams(location.search).get('safe') === '1'
 
     function showBootError(error) {
       console.error('ShareCapsule Prepare failed to start', error)
@@ -55,10 +56,14 @@
       throw error
     }
 
-    for (const moduleName of ['brand.js', 'live-research-ui.js', 'report-ui.js']) {
-      import(`/${moduleName}?v=${build}`).catch((error) => {
-        console.error(`Optional module ${moduleName} failed`, error)
-      })
+    if (!safeMode) {
+      for (const moduleName of ['brand.js', 'live-research-ui.js', 'report-ui.js']) {
+        import(`/${moduleName}?v=${build}`).catch((error) => {
+          console.error(`Optional module ${moduleName} failed`, error)
+        })
+      }
+    } else {
+      console.info('ShareCapsule Prepare safe mode: optional modules are disabled')
     }
   </script>
 </body>
