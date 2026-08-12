@@ -109,6 +109,10 @@ The questions are original ShareCapsule Prepare items; the service does not copy
 - California NGSS: `https://www.cde.ca.gov/CI/pl/ngssstandards.asp`
 - Khan Academy Grade 7 Math: `https://www.khanacademy.org/math/cc-seventh-grade-math`
 - Khan Academy Grade 8 Math: `https://www.khanacademy.org/math/cc-eighth-grade-math`
+- Khan Academy Middle School Biology: `https://www.khanacademy.org/science/ms-biology`
+- Khan Academy Middle School Earth and Space Science: `https://www.khanacademy.org/science/middle-school-earth-and-space-science`
+
+The Khan middle-school science courses provide student-facing lessons and practice for cells/organisms, heredity/evolution/ecosystems, weather/climate, Earth systems, natural resources, human impacts, and related inquiry skills. They supplement rather than replace the district curriculum evidence.
 
 Live research uses the configured Serper → Brave → Tavily provider chain and the existing 30-day query/package caches. `srvusd.net` and `cde.ca.gov` are promoted as authoritative target evidence for matching SRVUSD Grade 7 research.
 
