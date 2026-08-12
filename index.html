@@ -17,13 +17,50 @@
   <link rel="stylesheet" href="/report.css" />
   <link rel="stylesheet" href="/brand.css" />
   <link rel="stylesheet" href="/srvusd-grade7.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "./target-model.js": "/target-model-v2.js?v=20260812-1755"
+      }
+    }
+  </script>
 </head>
 <body>
-  <div id="app"></div>
-  <script type="module" src="/app.js"></script>
-  <script type="module" src="/brand.js"></script>
-  <script type="module" src="/srvusd-grade7-ui.js"></script>
-  <script type="module" src="/live-research-ui.js"></script>
-  <script type="module" src="/report-ui.js"></script>
+  <div id="app">
+    <main style="max-width:760px;margin:72px auto;padding:24px;font-family:system-ui,sans-serif">
+      <strong>ShareCapsule Prepare</strong>
+      <p>Loading preparation workspace…</p>
+    </main>
+  </div>
+  <script type="module">
+    const app = document.querySelector('#app')
+    const build = '20260812-1755'
+
+    function showBootError(error) {
+      console.error('ShareCapsule Prepare failed to start', error)
+      const message = error instanceof Error ? error.message : String(error || 'Unknown module error')
+      app.innerHTML = `
+        <main style="max-width:760px;margin:72px auto;padding:24px;font-family:system-ui,sans-serif;line-height:1.5">
+          <strong style="font-size:20px">ShareCapsule Prepare</strong>
+          <h1 style="font-size:28px;margin:18px 0 8px">The application could not start.</h1>
+          <p>Hosting is reachable, but a browser module failed to load. This diagnostic is shown instead of a blank page.</p>
+          <pre style="white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;border:1px solid #d7ddd9;border-radius:10px;background:#f7f9f8">${message.replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre>
+          <p>Refresh once. If this remains visible, copy the error above.</p>
+        </main>`
+    }
+
+    try {
+      await import(`/app.js?v=${build}`)
+    } catch (error) {
+      showBootError(error)
+      throw error
+    }
+
+    for (const moduleName of ['brand.js', 'srvusd-grade7-ui.js', 'live-research-ui.js', 'report-ui.js']) {
+      import(`/${moduleName}?v=${build}`).catch((error) => {
+        console.error(`Optional module ${moduleName} failed`, error)
+      })
+    }
+  </script>
 </body>
 </html>
