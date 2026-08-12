@@ -11,7 +11,7 @@
     }
   ],
   "vars": {
-    "ALLOWED_ORIGINS": "https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080"
+    "ALLOWED_ORIGINS": "https://learning.sharecapsule.app,https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080"
   },
   "secrets": {
     "required": ["BRAVE_SEARCH_API_KEY"]
