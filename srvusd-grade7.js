@@ -21,7 +21,6 @@ export function isSrvusdGrade7(profile = {}) {
 }
 
 function isMath(profile) { return containsAny(norm(profile.subject), ['math', 'mathematics']) }
-function isScience(profile) { return containsAny(norm(profile.subject), ['science', 'life science', 'integrated science']) }
 function mathTrack(profile) {
   const track = norm(profile.curriculumTrack || profile.mathCourse || profile.examName)
   return track.includes('course 3') || track.includes('accelerated') ? 'Course 3 Math' : 'Course 2 Math'
@@ -59,7 +58,7 @@ export function buildSrvusdGrade7Model(profile) {
   return {
     track: 'academic',
     label: `SRVUSD Grade 7 · ${course}${school ? ` · ${school}` : ''}`,
-    difficulty: course === 'Course 3 Math' ? 'core' : 'core',
+    difficulty: 'core',
     competencies: competencies.map((item) => ({ ...item })),
     source: 'San Ramon Grade 7 curriculum profile. SRVUSD public materials confirm SpringBoard middle-school math pathways and NGSS/Inspire Science; the detailed unit map is the configured local syllabus for this preparation target.',
     curriculum: { district: SRVUSD_DISTRICT, grade: 'Grade 7', course },
@@ -107,15 +106,17 @@ const resources = [
   { id:'ca-ngss', title:'NGSS for California Public Schools', publisher:'California Department of Education', url:'https://www.cde.ca.gov/CI/pl/ngssstandards.asp', format:'Official standards', competencies:scienceCompetencies.map((x)=>x.name), quality:'Government standards source', description:'California NGSS standards and middle-grade models, including Grade 7 resources.', targetEvidence:true, minutes:25 },
   { id:'khan-grade7', title:'7th Grade Math', publisher:'Khan Academy', url:'https://www.khanacademy.org/math/cc-seventh-grade-math', format:'Lessons + practice', competencies:course2Competencies.map((x)=>x.name), quality:'Established educational source', description:'Standards-aligned practice for ratios, rational numbers, equations, geometry, statistics, and probability.', targetEvidence:false, minutes:35 },
   { id:'khan-grade8', title:'8th Grade Math', publisher:'Khan Academy', url:'https://www.khanacademy.org/math/cc-eighth-grade-math', format:'Lessons + practice', competencies:course3Competencies.map((x)=>x.name), quality:'Established educational source', description:'Practice for exponents, linear equations, transformations, Pythagorean theorem, and volume topics aligned with accelerated Course 3 skills.', targetEvidence:false, minutes:35 },
+  { id:'khan-ms-biology', title:'Middle School Biology', publisher:'Khan Academy', url:'https://www.khanacademy.org/science/ms-biology', format:'Lessons + practice', competencies:['Cellular & body systems','Genetics, adaptation & inheritance','Human impact & ecosystems','Scientific inquiry & evidence'], quality:'Established educational source', description:'Middle-school biology lessons and practice covering cells and organisms, heredity and variation, evolution, and ecosystems with NGSS-aligned skills.', targetEvidence:false, minutes:35 },
+  { id:'khan-ms-earth', title:'Middle School Earth and Space Science', publisher:'Khan Academy', url:'https://www.khanacademy.org/science/middle-school-earth-and-space-science', format:'Lessons + practice', competencies:['Weather, climate & Earth systems','Human impact & ecosystems','Scientific inquiry & evidence'], quality:'Established educational source', description:'Middle-school Earth science lessons and practice covering weather, climate, Earth systems, natural resources, and human impacts.', targetEvidence:false, minutes:35 },
 ]
 
 export function buildSrvusdGrade7LearningPath(profile, gaps, model, maxBlocks = 3) {
   const math = isMath(profile)
   const course = math ? mathTrack(profile) : 'Science'
   const relevant = resources.filter((resource) => {
-    if (course === 'Course 2 Math') return resource.id !== 'khan-grade8' && resource.id !== 'srvusd-science' && resource.id !== 'ca-ngss'
-    if (course === 'Course 3 Math') return resource.id !== 'khan-grade7' && resource.id !== 'srvusd-science' && resource.id !== 'ca-ngss'
-    return ['srvusd-science','ca-ngss'].includes(resource.id)
+    if (course === 'Course 2 Math') return ['srvusd-math','khan-grade7'].includes(resource.id)
+    if (course === 'Course 3 Math') return ['srvusd-math','khan-grade8'].includes(resource.id)
+    return ['srvusd-science','ca-ngss','khan-ms-biology','khan-ms-earth'].includes(resource.id)
   })
   const targetSources = relevant.filter((resource) => resource.targetEvidence)
   const blocks = gaps.filter((gap) => gap.score < 90).slice(0, maxBlocks).map((gap) => {
