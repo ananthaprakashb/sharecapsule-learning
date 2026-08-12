@@ -16,6 +16,13 @@
   <link rel="stylesheet" href="/campus.css" />
   <link rel="stylesheet" href="/report.css" />
   <link rel="stylesheet" href="/brand.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "./target-model.js": "/target-model-v2.js?v=20260812-1732"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="app">
@@ -26,7 +33,7 @@
   </div>
   <script type="module">
     const app = document.querySelector('#app')
-    const build = '20260812-1723'
+    const build = '20260812-1732'
 
     function showBootError(error) {
       console.error('ShareCapsule Prepare failed to start', error)
