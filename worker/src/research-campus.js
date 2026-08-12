@@ -1,0 +1,41 @@
+import { buildQueries as buildBaseQueries, rankSources as rankBaseSources, sanitizeResearchRequest as sanitizeBaseRequest, validateResearchRequest as validateBaseRequest } from './research.js'
+
+const DEFAULT_COMPANIES = ['TCS','Cognizant','Infosys','HCLTech','Wipro','Accenture','Capgemini','Tech Mahindra']
+const safeText = (value, max=240) => String(value || '').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max)
+const clamp = (value,min,max) => Math.min(max,Math.max(min,value))
+const norm = (value='') => String(value).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()
+const OFFICIAL_COMPANY_DOMAINS = new Map([
+  ['tcs.com',['tcs','tata consultancy services']],['infosys.com',['infosys']],['cognizant.com',['cognizant']],['hcltech.com',['hcltech','hcl']],['wipro.com',['wipro']],['accenture.com',['accenture']],['capgemini.com',['capgemini']],['techmahindra.com',['tech mahindra','techmahindra']],
+])
+function parseCompanies(value){const items=String(value||'').split(/[,;\n]/).map((x)=>safeText(x,80)).filter(Boolean);return items.length?[...new Set(items)]:DEFAULT_COMPANIES}
+export function validateResearchRequest(body){
+  if(body?.profile?.track!=='campus') return validateBaseRequest(body)
+  if(!body||typeof body!=='object') throw new Error('Request body must be an object')
+  const p=body.profile||{}; if(!p.degree) throw new Error('Campus research requires degree'); if(!p.branch) throw new Error('Campus research requires branch')
+  if(!Array.isArray(body.competencies)||body.competencies.length===0) throw new Error('competencies are required')
+  if(body.competencies.length>15) throw new Error('Too many competencies'); if(Array.isArray(body.gaps)&&body.gaps.length>10) throw new Error('Too many gaps'); return true
+}
+export function sanitizeResearchRequest(body){
+  if(body?.profile?.track!=='campus') return sanitizeBaseRequest(body)
+  const p=body.profile||{}; const profile={track:'campus',degree:safeText(p.degree,60),branch:safeText(p.branch,100),semester:safeText(p.semester,60),graduationYear:safeText(p.graduationYear,20),companies:parseCompanies(p.companies).join(', '),role:safeText(p.role||'Graduate Engineer / Software Trainee',120),programmingLanguages:safeText(p.programmingLanguages,240),projects:safeText(p.projects,400),cgpa:safeText(p.cgpa,40),skills:safeText(p.skills,300)}
+  const competencies=(body.competencies||[]).slice(0,15).map((item)=>({name:safeText(item.name,80),weight:clamp(Number(item.weight||1),0.1,2),rationale:safeText(item.rationale,180)})).filter((x)=>x.name)
+  const gaps=(body.gaps||[]).slice(0,10).map((item)=>({name:safeText(item.name||item.competency,80),score:clamp(Number(item.score||0),0,100),priority:clamp(Number(item.priority||0),0,100)})).filter((x)=>x.name)
+  return {profile,competencies,gaps}
+}
+export function buildQueries(request){
+  if(request?.profile?.track!=='campus') return buildBaseQueries(request)
+  const companies=parseCompanies(request.profile.companies); const queries=companies.slice(0,4).map((company)=>`${company} engineering graduates campus hiring careers India official`)
+  const topGaps=request.gaps.slice().sort((a,b)=>b.priority-a.priority).slice(0,2).map((g)=>g.name)
+  queries.push([request.profile.degree,request.profile.branch,'campus placement',...topGaps,'aptitude coding technical interview'].filter(Boolean).join(' '))
+  return [...new Set(queries.map((q)=>q.trim().replace(/\s+/g,' ')))].slice(0,5)
+}
+function officialCompanyForPublisher(publisher){const host=String(publisher||'').toLowerCase().replace(/^www\./,'');for(const [domain,aliases] of OFFICIAL_COMPANY_DOMAINS){if(host===domain||host.endsWith(`.${domain}`))return{domain,aliases}}return null}
+function selectedCompanyMatch(aliases,profile){const selected=parseCompanies(profile.companies).map(norm);return aliases.some((alias)=>selected.some((target)=>target.includes(norm(alias))||norm(alias).includes(target)))}
+export function rankSources(rawSources,request){
+  const ranked=rankBaseSources(rawSources,request); if(request?.profile?.track!=='campus') return ranked
+  return ranked.map((source)=>{const official=officialCompanyForPublisher(source.publisher);if(!official){if(source.publisher==='onlinecourses.nptel.ac.in'||source.publisher.endsWith('.nptel.ac.in'))return{...source,quality:'University/public education source',authorityScore:Math.max(source.authorityScore,88),score:Math.max(source.score,70)};return source}
+    const targetEvidence=selectedCompanyMatch(official.aliases,request.profile),authorityScore=96,relevanceScore=Math.max(source.relevanceScore||0,targetEvidence?65:50),score=Math.round(authorityScore*.48+relevanceScore*.52)
+    return{...source,quality:'Official company source',authorityScore,relevanceScore,score:Math.max(source.score,score),targetEvidence}
+  }).sort((a,b)=>b.score-a.score)
+}
+export function targetLabel(profile){if(profile.track!=='campus')return profile.track==='interview'?[profile.company,profile.role,profile.level].filter(Boolean).join(' · '):[profile.grade,profile.subject,profile.examName].filter(Boolean).join(' · ');const companies=parseCompanies(profile.companies),companyText=companies.length>4?`${companies.slice(0,4).join(', ')} +${companies.length-4} more`:companies.join(', ');return `${profile.degree||'B.Tech'} ${profile.branch||'IT'} · Campus Placement · ${companyText}`}
