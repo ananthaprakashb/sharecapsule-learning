@@ -3,6 +3,7 @@ import { configuredProviders } from './providers/index.js'
 
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' }
 const maxBodyBytes = 32 * 1024
+const RESEARCH_CACHE_SECONDS = 30 * 24 * 60 * 60
 
 function allowedOrigins(env) {
   return new Set(String(env.ALLOWED_ORIGINS || 'https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080')
@@ -32,6 +33,26 @@ async function hashPayload(payload) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function researchCacheIdentity(sanitized) {
+  const { profile, competencies, gaps } = sanitized
+  return {
+    version: 3,
+    target: {
+      track: profile.track,
+      company: profile.company,
+      role: profile.role,
+      level: profile.level,
+      grade: profile.grade,
+      subject: profile.subject,
+      examName: profile.examName,
+      topics: profile.topics,
+      skills: profile.skills,
+    },
+    competencyOrder: competencies.slice().sort((a, b) => b.weight - a.weight).map((item) => item.name),
+    gapOrder: gaps.slice().sort((a, b) => b.priority - a.priority).map((item) => item.name),
+  }
+}
+
 async function readJson(request) {
   const contentLength = Number(request.headers.get('Content-Length') || 0)
   if (contentLength > maxBodyBytes) throw new Error('Request body is too large')
@@ -57,6 +78,8 @@ export default {
         providerConfigured: providers.length > 0,
         providers,
         providerOrder: ['Serper', 'Brave Search', 'Tavily'],
+        researchCacheDays: 30,
+        queryCacheDays: 30,
         time: new Date().toISOString(),
       }, 200, request, env, { 'Cache-Control': 'no-store' })
     }
@@ -73,8 +96,9 @@ export default {
       const body = await readJson(request)
       validateResearchRequest(body)
       const sanitized = sanitizeResearchRequest(body)
-      const cacheHash = await hashPayload(sanitized)
-      const cacheRequest = new Request(`https://research-cache.internal/v2/${cacheHash}`, { method: 'GET' })
+      const cacheIdentity = researchCacheIdentity(sanitized)
+      const cacheHash = await hashPayload(cacheIdentity)
+      const cacheRequest = new Request(`https://research-cache.internal/v3/${cacheHash}`, { method: 'GET' })
       const cache = caches.default
       const force = url.searchParams.get('refresh') === '1'
 
@@ -82,15 +106,20 @@ export default {
         const hit = await cache.match(cacheRequest)
         if (hit) {
           const cached = await hit.json()
-          return responseJson({ ...cached, cache: { hit: true, key: cacheHash.slice(0, 12) } }, 200, request, env, { 'Cache-Control': 'private, max-age=60' })
+          return responseJson({ ...cached, cache: { hit: true, key: cacheHash.slice(0, 12), ttlDays: 30 } }, 200, request, env, { 'Cache-Control': 'private, max-age=60' })
         }
       }
 
       if (!configuredProviders(env).length) return responseJson({ error: 'Live search provider is not configured', code: 'SEARCH_PROVIDER_NOT_CONFIGURED' }, 503, request, env)
-      const result = await researchTarget(sanitized, env)
-      const cacheable = new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=21600' } })
+      const result = await researchTarget(sanitized, env, { force })
+      const cacheable = new Response(JSON.stringify(result), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': `public, max-age=${RESEARCH_CACHE_SECONDS}`,
+        },
+      })
       ctx.waitUntil(cache.put(cacheRequest, cacheable))
-      return responseJson({ ...result, cache: { hit: false, key: cacheHash.slice(0, 12) } }, 200, request, env, { 'Cache-Control': 'private, max-age=60' })
+      return responseJson({ ...result, cache: { hit: false, key: cacheHash.slice(0, 12), ttlDays: 30 } }, 200, request, env, { 'Cache-Control': 'private, max-age=60' })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Research failed'
       const status = /required|must be|Too many|too large|JSON/.test(message) ? 400 : 502
