@@ -1,3 +1,4 @@
 SERPER_API_KEY=replace-with-your-serper-api-key
 BRAVE_SEARCH_API_KEY=replace-with-your-brave-search-api-key
 TAVILY_API_KEY=replace-with-your-tavily-api-key
+REPORT_SIGNING_SECRET=replace-with-a-strong-random-report-signing-secret
