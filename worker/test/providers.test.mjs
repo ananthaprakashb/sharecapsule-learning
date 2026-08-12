@@ -42,3 +42,23 @@ test('falls back from Serper to Brave on provider error', async () => {
   assert.equal(result.results[0].provider, 'Brave Search')
   assert.equal(calls.length, 2)
 })
+
+test('falls through to Tavily when Serper and Brave fail', async () => {
+  const calls = []
+  globalThis.fetch = async (url) => {
+    calls.push(String(url))
+    if (String(url).includes('google.serper.dev')) return new Response('unavailable', { status: 503 })
+    if (String(url).includes('api.search.brave.com')) return new Response('rate limited', { status: 429 })
+    if (String(url).includes('api.tavily.com/search')) {
+      return new Response(JSON.stringify({ results: [{ title: 'Tavily result', url: 'https://example.edu/result', content: 'final fallback' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    throw new Error('Unexpected provider call')
+  }
+  const result = await searchWithFallback('example query', { SERPER_API_KEY: 's', BRAVE_SEARCH_API_KEY: 'b', TAVILY_API_KEY: 't' })
+  assert.equal(result.provider, 'Tavily')
+  assert.equal(result.results[0].provider, 'Tavily')
+  assert.equal(calls.length, 3)
+})
