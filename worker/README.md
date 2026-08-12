@@ -57,6 +57,8 @@ The cache stores public search results and source metadata, not raw diagnostic a
 
 `GET /health` reports `researchCacheDays` and `queryCacheDays`, currently both `30`.
 
+Note: the Workers Cache API is an edge cache rather than durable database storage. Entries are configured with a 30-day TTL but may be evicted earlier by Cloudflare. If Prepare later needs guaranteed 30-day persistence across regions, move the reusable public research cache to Workers KV or D1 without changing the browser API contract.
+
 The GitHub Pages frontend treats this Worker as progressive enhancement. If the API is unavailable or no provider is configured, Prepare continues with the reviewed static resource catalog.
 
 ## Source provenance
