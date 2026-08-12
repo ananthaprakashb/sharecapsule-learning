@@ -3,19 +3,9 @@ import assert from 'node:assert/strict'
 import { buildQueries, rankSources, sanitizeResearchRequest, validateResearchRequest } from '../src/research-campus.js'
 
 const campus = {
-  profile: {
-    track:'campus', degree:'B.Tech', branch:'Information Technology', semester:'Final semester',
-    companies:'TCS, Cognizant, Infosys, HCLTech', programmingLanguages:'Java, Python',
-  },
-  competencies:[
-    {name:'Programming fundamentals',weight:1.2},
-    {name:'Quantitative aptitude',weight:1.1},
-    {name:'Data & SQL',weight:1},
-  ],
-  gaps:[
-    {name:'Programming fundamentals',score:45,priority:80},
-    {name:'Quantitative aptitude',score:55,priority:70},
-  ],
+  profile: { track:'campus', degree:'B.Tech', branch:'Information Technology', semester:'Final semester', companies:'TCS, Cognizant, Infosys, HCLTech, Wipro, Accenture, Capgemini, Tech Mahindra', programmingLanguages:'Java, Python' },
+  competencies:[{name:'Programming fundamentals',weight:1.2},{name:'Quantitative aptitude',weight:1.1},{name:'Data & SQL',weight:1}],
+  gaps:[{name:'Programming fundamentals',score:45,priority:80},{name:'Quantitative aptitude',score:55,priority:70}],
 }
 
 test('builds multi-company campus queries', () => {
@@ -24,8 +14,10 @@ test('builds multi-company campus queries', () => {
   const queries = buildQueries(request)
   assert.ok(queries.some((q) => /TCS.*campus hiring/i.test(q)))
   assert.ok(queries.some((q) => /Cognizant.*campus hiring/i.test(q)))
+  assert.ok(queries.some((q) => /Wipro.*campus hiring/i.test(q)))
+  assert.ok(queries.some((q) => /Tech Mahindra.*campus hiring/i.test(q)))
   assert.ok(queries.some((q) => /B.Tech.*Information Technology.*campus placement/i.test(q)))
-  assert.ok(queries.length <= 5)
+  assert.ok(queries.length <= 9)
 })
 
 test('marks selected company official domain as target evidence', () => {
