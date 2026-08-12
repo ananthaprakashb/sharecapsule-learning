@@ -2,6 +2,6 @@
   <title id="title">ShareCapsule</title>
   <desc id="desc">ShareCapsule SC brand mark</desc>
   <rect width="64" height="64" rx="18" fill="#173d34"/>
-  <path d="M15.5 24.1c0-6.1 4.9-10.4 12.3-10.4 4.5 0 8.3 1.3 11.1 3.8l-4 5c-2.1-1.7-4.4-2.5-7.1-2.5-3.2 0-5.2 1.4-5.2 3.6 0 2.4 2.2 3.2 6.8 4.2 7 1.6 10.7 4.6 10.7 10.2 0 6.4-5 10.6-12.8 10.6-5.2 0-9.9-1.7-13.2-4.8l4.4-5c2.7 2.3 5.7 3.5 8.9 3.5 3.5 0 5.6-1.4 5.6-3.7 0-2.2-1.9-3.2-6.6-4.3-7.1-1.6-10.9-4.5-10.9-10.2Z" fill="#ffffff"/>
-  <path d="M51.2 23.6c-1.4-2.2-3.6-3.4-6.3-3.4-4.4 0-7.5 3.7-7.5 10.8 0 7 3 10.8 7.6 10.8 2.8 0 5-1.2 6.5-3.7l5.1 3.2c-2.5 4.6-6.4 7-11.8 7-8.7 0-14.7-6.7-14.7-17.3 0-10.7 6.1-17.3 14.8-17.3 5.1 0 9.1 2.2 11.6 6.5l-5.3 3.4Z" fill="#b7d8cf" opacity="0.96"/>
+  <text x="32" y="39" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" letter-spacing="-1" fill="#ffffff">SC</text>
+  <circle cx="50" cy="14" r="4" fill="#b7d8cf"/>
 </svg>
