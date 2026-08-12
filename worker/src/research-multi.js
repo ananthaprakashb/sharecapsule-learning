@@ -1,4 +1,4 @@
-import { buildQueries, rankSources, sanitizeResearchRequest, targetLabel, validateResearchRequest } from './research-campus.js'
+import { buildQueries, rankSources, sanitizeResearchRequest, targetLabel, validateResearchRequest } from './research-school.js'
 import { configuredProviders, searchWithFallback } from './providers/index.js'
 
 export { sanitizeResearchRequest, validateResearchRequest }
@@ -16,5 +16,5 @@ export async function researchTarget(body,env,{force=false}={}){
   const sources=rankSources(rawSources,request).map((source)=>({...source,provenance:{...source.provenance,provider:providerByUrl.get(source.url)||source.provenance?.provider||'Web search',queryCacheHit:Boolean(queryCacheByUrl.get(source.url))}}))
   const evidence={};for(const competency of request.competencies){const matches=sources.filter((source)=>source.competencies.includes(competency.name)).slice(0,5);evidence[competency.name]={sourceIds:matches.map((source)=>source.id),confidence:matches.length>=3?'strong public evidence':matches.length>=1?'some public evidence':'no direct live evidence found'}}
   const usedProviders=[...new Set(sources.map((source)=>source.provenance?.provider).filter(Boolean))],queryCacheHits=batches.filter((batch)=>batch.cacheHit).length
-  return{version:4,target:{label:targetLabel(request.profile),track:request.profile.track},provider:{name:usedProviders.join(' + ')||configuredProviders(env).join(' → ')||'No provider',configured:configuredProviders(env),order:['Serper','Brave Search','Tavily']},researchedAt:new Date().toISOString(),queries,queryCache:{ttlDays:30,hits:queryCacheHits,misses:batches.length-queryCacheHits},sources,evidenceByCompetency:evidence,warnings:sources.length?[]:['No usable public sources were returned. Use the reviewed local catalog and retry later.']}
+  return{version:5,target:{label:targetLabel(request.profile),track:request.profile.track},provider:{name:usedProviders.join(' + ')||configuredProviders(env).join(' → ')||'No provider',configured:configuredProviders(env),order:['Serper','Brave Search','Tavily']},researchedAt:new Date().toISOString(),queries,queryCache:{ttlDays:30,hits:queryCacheHits,misses:batches.length-queryCacheHits},sources,evidenceByCompetency:evidence,warnings:sources.length?[]:['No usable public sources were returned. Use the reviewed local catalog and retry later.']}
 }
