@@ -1,0 +1,36 @@
+name: Assessment tests
+
+on:
+  pull_request:
+    paths:
+      - '*.js'
+      - '*.css'
+      - 'worker/**'
+      - '.github/workflows/assessment-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - '*.js'
+      - '*.css'
+      - 'worker/**'
+      - '.github/workflows/assessment-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
