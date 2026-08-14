@@ -41,6 +41,9 @@ function ensureTimerNode(panel) {
 function expire(panel) {
   clearTimer()
   sessionStorage.removeItem(STORAGE_KEY)
+  currentPanel = null
+  panel.classList.remove('diagnostic-panel')
+  panel.classList.add('diagnostic-expired-panel')
   panel.innerHTML = `
     <div class="session-expired" role="alert">
       <div class="eyebrow">Assessment session closed</div>
@@ -48,11 +51,7 @@ function expire(panel) {
       <p>This attempt has been closed after 60 minutes so the diagnostic remains comparable. Partial answers are not scored as a completed assessment.</p>
       <button class="primary-button" data-restart-assessment>Restart diagnostic</button>
     </div>`
-  panel.querySelector('[data-restart-assessment]')?.addEventListener('click', () => {
-    const edit = document.querySelector('[data-edit]')
-    if (edit) edit.click()
-    else location.reload()
-  })
+  panel.querySelector('[data-restart-assessment]')?.addEventListener('click', () => location.reload())
 }
 
 function tick(panel, session) {
@@ -75,7 +74,7 @@ function startOrResume(panel) {
     writeSession(session)
   }
   tick(panel, session)
-  intervalId = setInterval(() => tick(panel, session), 1000)
+  if (panel.classList.contains('diagnostic-panel')) intervalId = setInterval(() => tick(panel, session), 1000)
 }
 
 function sync() {
