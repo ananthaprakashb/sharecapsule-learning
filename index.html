@@ -17,10 +17,12 @@
   <link rel="stylesheet" href="/report.css" />
   <link rel="stylesheet" href="/brand.css" />
   <link rel="stylesheet" href="/srvusd-grade7.css" />
+  <link rel="stylesheet" href="/assessment-session.css" />
   <script type="importmap">
     {
       "imports": {
-        "./target-model.js": "/target-model-v2.js?v=20260812-1810"
+        "./target-model.js": "/target-model-v2.js?v=20260814-0852",
+        "./engine.js": "/engine-v2.js?v=20260814-0852"
       }
     }
   </script>
@@ -34,7 +36,7 @@
   </div>
   <script type="module">
     const app = document.querySelector('#app')
-    const build = '20260812-1810'
+    const build = '20260814-0852'
 
     function showBootError(error) {
       console.error('ShareCapsule Prepare failed to start', error)
@@ -56,7 +58,7 @@
       throw error
     }
 
-    for (const moduleName of ['question-scroll.js', 'brand.js', 'srvusd-grade7-ui.js', 'live-research-ui.js', 'report-ui.js']) {
+    for (const moduleName of ['question-scroll.js', 'assessment-timer.js', 'brand.js', 'srvusd-grade7-ui.js', 'live-research-ui.js', 'report-ui.js']) {
       import(`/${moduleName}?v=${build}`).catch((error) => {
         console.error(`Optional module ${moduleName} failed`, error)
       })
