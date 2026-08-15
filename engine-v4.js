@@ -34,7 +34,9 @@ function readLivePool(profile){
 export function buildDiagnostic(profile,requestedMax=50){
   const live=readLivePool(profile)
   if(live){
-    const questions=live.questions.slice(0,Math.min(50,Math.max(1,Number(requestedMax)||50)))
+    // app.js still passes the historical 10/14-question cap. Live company-role
+    // assessments deliberately ignore that legacy cap and use the prepared pool.
+    const questions=live.questions.slice(0,50)
     return{
       model:buildTargetModel(profile),
       questions,
