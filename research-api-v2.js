@@ -5,7 +5,7 @@ function researchProfile(profile={}){
   const common={track:profile.track}
   if(profile.track==='campus')return{...common,degree:profile.degree,branch:profile.branch,semester:profile.semester,graduationYear:profile.graduationYear,companies:profile.companies,programmingLanguages:profile.programmingLanguages,projects:profile.projects,cgpa:profile.cgpa,skills:profile.skills}
   if(profile.track==='interview')return{...common,company:profile.company,role:profile.role,level:profile.level,skills:profile.skills}
-  return{...common,grade:profile.grade,subject:profile.subject,examName:profile.examName,topics:profile.topics,district:profile.district,school:profile.school,curriculumTrack:profile.curriculumTrack}
+  return{...common,country:profile.country,region:profile.region,grade:profile.grade,subject:profile.subject,examName:profile.examName,topics:profile.topics,district:profile.district,school:profile.school,curriculumTrack:profile.curriculumTrack,targetDate:profile.targetDate}
 }
 
 export async function researchTarget(profile,model,gaps,{timeoutMs=12000}={}){
