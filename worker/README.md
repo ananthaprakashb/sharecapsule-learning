@@ -1,6 +1,6 @@
 # Prepare Live Research Worker
 
-Backend research, company-role assessment generation, and report-integrity service for `learning.sharecapsule.app`.
+Backend research, company-role assessment generation, persistent question-bank storage, and report-integrity service for `learning.sharecapsule.app`.
 
 ## API
 
@@ -53,18 +53,42 @@ The production Worker is configured for the custom domain `api.prepare.sharecaps
 
 Flow:
 
-1. search current official company/career material and public interview-process/candidate-report sources,
-2. reuse public search evidence through the 30-day query cache,
-3. send only the target, competency model, and public-source evidence to the question generator,
-4. generate original four-option practice questions for the specified company/role,
-5. return evidence source IDs and a short relevance rationale with each question,
-6. use local question fingerprints to avoid serving the same generated question again while fresh inventory can be created.
+1. normalize the user's company/role/level/skills and target competency set,
+2. check the persistent `QUESTION_BANK` KV namespace for that target need,
+3. serve saved questions first, excluding fingerprints already used by that learner,
+4. only if there are not enough fresh saved questions, search current official/public evidence and generate the missing amount,
+5. append newly generated original questions to the persistent bank for future users and future attempts,
+6. return bank metadata showing how many questions were reused versus generated in this request.
+
+The server-side bank identity intentionally contains target needs, not learner answers: company/companies, role, level or campus context, normalized skills/languages, and the competency names. Diagnostic answers and report contents are not stored in this bank.
+
+Each target bank can retain up to 500 deduplicated generated questions. `QUESTION_BANK_TTL_DAYS` defaults to 180 days. When a full fresh set is already stored, the endpoint can serve the assessment without calling OpenAI at all. If generation is temporarily unavailable but at least 10 fresh saved questions remain, Prepare can serve that saved inventory instead of failing the assessment entirely.
 
 The service does **not** copy distinctive wording from candidate reports and does not use leaked, confidential, NDA-protected, private, or illicitly obtained interview material. Public reports are treated as secondary evidence about recurring themes; official company sources are stronger evidence for role requirements and published interview process.
 
 The model request uses `store: false`. The learner's actual diagnostic answers are never included in the generation request.
 
-If `OPENAI_API_KEY` is not configured, the endpoint returns `QUESTION_GENERATOR_NOT_CONFIGURED`; the frontend displays the configuration failure instead of silently pretending the generic static bank is company-specific.
+## Persistent question-bank setup
+
+`wrangler.jsonc` declares:
+
+```json
+{
+  "kv_namespaces": [
+    { "binding": "QUESTION_BANK" }
+  ]
+}
+```
+
+With current Wrangler automatic provisioning, the first `npm run deploy` can provision the KV resource for the binding and write the created namespace ID into the local Wrangler configuration. If the account/environment does not use automatic provisioning, create a namespace explicitly and add its ID to the same `QUESTION_BANK` binding.
+
+After deployment, `GET /health` reports:
+
+- `questionBankConfigured`
+- `questionBankTtlDays`
+- `maxSavedQuestionsPerTarget`
+
+The assessment response includes a `bank` object with `fullHit`, `storedCount`, `servedFromBank`, and `generatedNow`, which is also surfaced in the frontend status message.
 
 ## Signed local progress reports
 
@@ -81,23 +105,22 @@ ZIP contents must be treated as untrusted input. Future upload processing should
 
 This design is **tamper-evident**, not physically uneditable. Anything saved on a user's device can be altered, but altered content is rejected cryptographically when shared back.
 
-`GET /health` reports report signing plus company-role question-generation configuration without exposing secrets.
+`GET /health` reports report signing, company-role generation, and persistent question-bank configuration without exposing secrets.
 
 ## Provider behavior
 
 Serper is used first to keep routine query cost low. Brave Search is attempted when Serper fails, and Tavily is attempted when both earlier configured providers fail. Tavily uses `search_depth: basic`.
 
-## Caching
+## Caching and persistence
 
-Prepare uses 30-day public-evidence cache layers with the Workers Cache API:
+Prepare now has two different kinds of reuse:
 
-1. **Per-query research cache** — an identical public web search query is reused for 30 days instead of calling Serper/Brave/Tavily again.
-2. **Research-package cache** — equivalent target + ordered competency names + ordered gap names reuse the assembled research package for 30 days.
-3. **Assessment evidence-query cache** — company/role candidate-experience and interview-process searches are also reused for 30 days.
+1. **30-day public-evidence caches** in the Workers Cache API for research queries, research packages, and assessment-specific evidence searches.
+2. **Persistent generated question banks** in Workers KV, keyed by normalized target need and kept for 180 days by default.
 
-Numeric learner scores and gap-priority values are excluded from the reusable research-package cache identity. The cache stores public search results and source metadata, not raw diagnostic answers. `?refresh=1` bypasses the relevant public-evidence cache when a deliberate refresh is needed.
+The public-evidence cache avoids repeated search-provider charges. The KV question bank avoids repeated model-generation charges. Numeric learner scores and diagnostic answers are excluded from both reusable identities.
 
-The Workers Cache API is an edge cache rather than durable database storage, so entries may be evicted before the configured TTL. Workers KV or D1 can replace this layer later without changing the browser API contract.
+`?refresh=1` bypasses the public-evidence cache when new questions actually need to be generated; it does not discard already saved question-bank inventory.
 
 ## Source provenance
 
