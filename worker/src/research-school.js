@@ -1,30 +1,101 @@
 import { buildQueries as buildBaseQueries, rankSources as rankBaseSources, sanitizeResearchRequest as sanitizeBaseRequest, targetLabel as baseTargetLabel, validateResearchRequest as validateBaseRequest } from './research-campus.js'
 
 const safeText=(value,max=240)=>String(value||'').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max)
-const norm=(value='')=>String(value||'').toLowerCase()
-function isSrvusdGrade7(profile={}){const grade=norm(profile.grade),district=norm(profile.district),school=norm(profile.school),subject=norm(profile.subject);return(/(^|\D)7(th)?(\D|$)/.test(grade)||grade==='7')&&(district.includes('san ramon valley')||district.includes('srvusd')||school.includes('san ramon')||school.includes('iron horse')||school.includes('windemere')||school.includes('gale ranch')||school.includes('pine valley'))&&(subject.includes('math')||subject.includes('science'))}
+const norm=(value='')=>String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()
+const tokens=(value='')=>[...new Set(norm(value).split(' ').filter((x)=>x.length>2))]
+const acronym=(value='')=>norm(value).split(' ').filter(Boolean).map((word)=>word[0]).join('')
 
-const LOCAL_ALIASES={
-  'Ratios & proportional relationships':['ratio','proportion','unit rate','scale drawing'],
-  'Percent & rational numbers':['percent','discount','interest','rational number','integer'],
-  'Expressions & equations':['expression','equation','inequality','linear'],
-  'Geometry & measurement':['geometry','angle','area','surface area','volume'],
-  'Statistics & probability':['statistics','population','probability','chance'],
-  'Real numbers & exponents':['real number','exponent','scientific notation','irrational'],
-  'Linear functions & systems':['linear function','slope','graph','system of equations'],
-  'Transformations & similarity':['transformation','congruence','similarity','dilation'],
-  'Pythagorean theorem':['pythagorean','right triangle','distance'],
-  '3D geometry & volume':['cylinder','cone','sphere','volume'],
-  'Cellular & body systems':['cell','body system','photosynthesis','respiration'],
-  'Weather, climate & Earth systems':['weather','climate','earth system','atmosphere'],
-  'Genetics, adaptation & inheritance':['genetic','inheritance','trait','adaptation','natural selection'],
-  'Human impact & ecosystems':['ecosystem','greenhouse','human impact','conservation'],
-  'Scientific inquiry & evidence':['investigation','experiment','evidence','model','data'],
+function academicProfile(profile={}){return profile?.track==='academic'}
+function systemLabel(profile={}){return profile.district||profile.educationSystem||profile.board||''}
+function locationLabel(profile={}){return profile.region||profile.state||profile.country||''}
+function academicTarget(profile={}){return [profile.school,systemLabel(profile),profile.grade,profile.subject,profile.curriculumTrack,profile.examName,locationLabel(profile)].filter(Boolean).join(' ')}
+
+function educationHostScore(host=''){
+  const value=String(host).toLowerCase().replace(/^www\./,'')
+  if(value.endsWith('.gov')||/\.gov\.[a-z]{2,}$/.test(value))return{kind:'government',quality:'Government standards source',authorityScore:97}
+  if(value.endsWith('.edu')||/\.edu\.[a-z]{2,}$/.test(value)||/\.ac\.[a-z]{2,}$/.test(value))return{kind:'education',quality:'Education institution source',authorityScore:90}
+  if(/\.k12\.[a-z.]+$/.test(value)||value.includes('.school.'))return{kind:'school',quality:'School / district source',authorityScore:91}
+  return null
 }
-function localMatches(source,competencies){const haystack=norm(`${source.title||''} ${source.description||source.snippet||''} ${source.url||''}`);return competencies.filter((item)=>(LOCAL_ALIASES[item.name]||[]).some((alias)=>haystack.includes(alias))).map((item)=>item.name)}
 
-export function validateResearchRequest(body){return validateBaseRequest(body)}
-export function sanitizeResearchRequest(body){const sanitized=sanitizeBaseRequest(body);if(body?.profile?.track==='academic'){sanitized.profile.district=safeText(body.profile.district,120);sanitized.profile.school=safeText(body.profile.school,120);sanitized.profile.curriculumTrack=safeText(body.profile.curriculumTrack,120)}return sanitized}
-export function buildQueries(request){if(!isSrvusdGrade7(request?.profile))return buildBaseQueries(request);const p=request.profile,queries=[],target=[p.district||'SRVUSD',p.grade,p.subject,p.curriculumTrack].filter(Boolean).join(' ');queries.push(`${target} curriculum official`);queries.push(`${target} standards SpringBoard Inspire Science NGSS`);if(p.school)queries.push(`${p.school} ${p.grade} ${p.subject} curriculum official`);const gaps=request.gaps.slice().sort((a,b)=>b.priority-a.priority).slice(0,2);for(const gap of gaps)queries.push(`${p.grade} ${p.subject} ${gap.name} ${p.district||'SRVUSD'} learning`);return[...new Set(queries.map((q)=>q.trim().replace(/\s+/g,' ')))].slice(0,5)}
-export function rankSources(rawSources,request){const ranked=rankBaseSources(rawSources,request);if(!isSrvusdGrade7(request?.profile))return ranked;return ranked.map((source)=>{const host=String(source.publisher||'').toLowerCase().replace(/^www\./,''),matches=localMatches(source,request.competencies),competencies=[...new Set([...(source.competencies||[]),...matches])],relevanceScore=Math.min(100,Math.max(source.relevanceScore||0,45+matches.length*12));let enriched={...source,competencies,relevanceScore,score:Math.max(source.score,Math.round((source.authorityScore||35)*.48+relevanceScore*.52))};if(host==='srvusd.net'||host.endsWith('.srvusd.net'))enriched={...enriched,quality:'Official district source',authorityScore:98,relevanceScore:Math.max(relevanceScore,72),score:Math.max(enriched.score,85),targetEvidence:true};if(host==='cde.ca.gov'||host.endsWith('.cde.ca.gov'))enriched={...enriched,quality:'Government standards source',authorityScore:97,relevanceScore:Math.max(relevanceScore,64),score:Math.max(enriched.score,81),targetEvidence:true};return enriched}).sort((a,b)=>b.score-a.score)}
-export function targetLabel(profile){if(!isSrvusdGrade7(profile))return baseTargetLabel(profile);return[profile.district||'SRVUSD',profile.grade,profile.subject,profile.curriculumTrack,profile.school].filter(Boolean).join(' · ')}
+function targetMatches(source,profile){
+  const haystack=norm(`${source.title||''} ${source.description||source.snippet||''} ${source.publisher||''} ${source.url||''}`)
+  const groups=[profile.school,systemLabel(profile),profile.curriculumTrack,profile.examName,profile.subject,profile.grade,locationLabel(profile)]
+    .map(tokens).filter((group)=>group.length)
+  return groups.reduce((score,group)=>score+(group.some((token)=>haystack.includes(token))?1:0),0)
+}
+
+function ownedSystemHost(host,profile){
+  const system=systemLabel(profile),school=profile.school||''
+  const aliases=[...tokens(system),...tokens(school),acronym(system),acronym(school)].filter((value)=>value.length>=4)
+  return aliases.some((value)=>host.includes(value))
+}
+
+export function validateResearchRequest(body){
+  validateBaseRequest(body)
+  if(body?.profile?.track==='academic'&&!body.profile.grade)throw new Error('Academic research requires grade or year level')
+  return true
+}
+
+export function sanitizeResearchRequest(body){
+  const sanitized=sanitizeBaseRequest(body)
+  if(body?.profile?.track==='academic'){
+    const p=body.profile||{}
+    sanitized.profile.country=safeText(p.country,100)
+    sanitized.profile.region=safeText(p.region||p.state,120)
+    sanitized.profile.district=safeText(p.district||p.educationSystem||p.board,160)
+    sanitized.profile.school=safeText(p.school,160)
+    sanitized.profile.curriculumTrack=safeText(p.curriculumTrack||p.course,160)
+    sanitized.profile.targetDate=safeText(p.targetDate,30)
+  }
+  return sanitized
+}
+
+export function buildQueries(request){
+  if(!academicProfile(request?.profile))return buildBaseQueries(request)
+  const p=request.profile,queries=[]
+  const system=systemLabel(p),location=locationLabel(p)
+  const gradeSubject=[p.grade,p.subject].filter(Boolean).join(' ')
+
+  if(p.school)queries.push(`${p.school} ${gradeSubject} ${p.curriculumTrack||''} curriculum syllabus official`)
+  if(system)queries.push(`${system} ${gradeSubject} ${p.curriculumTrack||''} curriculum standards official`)
+  if(location)queries.push(`${location} ${gradeSubject} curriculum standards department education official`)
+  if(p.country)queries.push(`${p.country} ${gradeSubject} national curriculum standards official`)
+  if(p.curriculumTrack)queries.push(`${p.curriculumTrack} ${gradeSubject} syllabus framework official`)
+  if(p.examName)queries.push(`${p.examName} ${gradeSubject} official exam course framework sample questions`)
+
+  const topGaps=(request.gaps||[]).slice().sort((a,b)=>b.priority-a.priority).slice(0,2)
+  for(const gap of topGaps)queries.push(`${academicTarget(p)} ${gap.name} official learning standards`)
+
+  if(queries.length<3)queries.push(`${academicTarget(p)} curriculum standards official education`)
+  return[...new Set(queries.map((q)=>q.trim().replace(/\s+/g,' ')))].slice(0,8)
+}
+
+export function rankSources(rawSources,request){
+  const ranked=rankBaseSources(rawSources,request)
+  if(!academicProfile(request?.profile))return ranked
+  return ranked.map((source)=>{
+    const host=String(source.publisher||'').toLowerCase().replace(/^www\./,'')
+    const education=educationHostScore(host)
+    const matches=targetMatches(source,request.profile)
+    const systemOwned=ownedSystemHost(host,request.profile)
+    let authorityScore=source.authorityScore||35
+    let quality=source.quality||'Public web source'
+    if(education){authorityScore=Math.max(authorityScore,education.authorityScore);quality=education.quality}
+    if(systemOwned){authorityScore=Math.max(authorityScore,98);quality='Official district source'}
+
+    const relevanceScore=Math.min(100,Math.max(source.relevanceScore||0,30+matches*15))
+    const targetEvidence=Boolean(source.targetEvidence)||
+      (systemOwned&&matches>=1)||
+      (education?.kind==='government'&&matches>=1)||
+      ((education?.kind==='education'||education?.kind==='school')&&matches>=2)
+    const score=Math.max(source.score||0,Math.round(authorityScore*.48+relevanceScore*.52))
+    return{...source,quality,authorityScore,relevanceScore,score,targetEvidence}
+  }).sort((a,b)=>b.score-a.score)
+}
+
+export function targetLabel(profile){
+  if(!academicProfile(profile))return baseTargetLabel(profile)
+  return[profile.school,systemLabel(profile),profile.grade,profile.subject,profile.curriculumTrack,profile.examName]
+    .filter(Boolean).join(' · ')||[profile.grade,profile.subject].filter(Boolean).join(' · ')
+}

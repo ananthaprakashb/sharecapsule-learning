@@ -13,7 +13,7 @@ function targetKey(p){
     return ['campus',p.degree,p.branch,p.semester,p.graduationYear,companies].map(norm).join('|')
   }
   if(p.track==='interview')return['interview',p.company,p.role,p.level].map(norm).join('|')
-  return['academic',p.district,p.school,p.grade,p.subject,p.curriculumTrack,p.examName].map(norm).join('|')
+  return['academic',p.country,p.region||p.state,p.district,p.school,p.grade,p.subject,p.curriculumTrack,p.examName].map(norm).join('|')
 }
 function numberFrom(text=''){const value=Number.parseFloat(String(text).replace(/[^0-9.\-]/g,''));return Number.isFinite(value)?value:null}
 function model(){return[...document.querySelectorAll('.model-chip-list > span')].map((n)=>({name:n.querySelector('b')?.textContent?.trim()||'',weight:numberFrom(n.querySelector('small')?.textContent||'')})).filter((x)=>x.name)}
@@ -26,7 +26,7 @@ function publicProfile(p){
     ? ['degree','branch','semester','graduationYear','cgpa','companies','programmingLanguages']
     : p.track==='interview'
       ? ['company','role','level','experience','skills']
-      : ['grade','subject','examName','topics','currentScore','desiredScore','district','school','curriculumTrack']
+      : ['country','region','grade','subject','examName','topics','currentScore','desiredScore','district','school','curriculumTrack']
   const fields=[...common,...trackFields]
   return Object.fromEntries(fields.filter((key)=>p[key]!==undefined&&p[key]!=='').map((key)=>[key,p[key]]))
 }

@@ -65,18 +65,32 @@ test('generator source enforces public-evidence and privacy policy', async () =>
   assert.match(source, /json_schema/)
 })
 
-test('frontend uses live company pool rather than relabeling static questions', async () => {
-  const ui = await readFile(new URL('../../company-assessment-ui.js', import.meta.url), 'utf8')
-  const engine = await readFile(new URL('../../engine-v4.js', import.meta.url), 'utf8')
+test('unified frontend still uses live company pool rather than relabeling static questions', async () => {
+  const ui = await readFile(new URL('../../target-assessment-ui.js', import.meta.url), 'utf8')
+  const engine = await readFile(new URL('../../engine-v5.js', import.meta.url), 'utf8')
   const index = await readFile(new URL('../../index.html', import.meta.url), 'utf8')
   assert.match(ui, /\/v1\/assessment\/questions/)
   assert.match(ui, /excludeFingerprints/)
   assert.match(ui, /count:50/)
-  assert.match(engine, /generation==='live-company-role'/)
-  assert.match(engine, /prepare-company-question-pool-v1/)
+  assert.match(ui, /return\{track:'interview'/)
+  assert.match(ui, /\['academic','interview','campus'\]\.includes\(profile\.track\)/)
+  assert.match(engine, /live-company-role/)
+  assert.match(engine, /prepare-live-question-pool-v2/)
   assert.match(engine, /live\.questions\.slice\(0,50\)/)
-  assert.match(index, /engine-v4\.js/)
-  assert.match(index, /company-assessment-ui\.js/)
+  assert.match(index, /engine-v5\.js/)
+  assert.match(index, /target-assessment-ui\.js/)
+})
+
+test('selected interview track overrides stale academic browser state and rejects cross-track payloads', async () => {
+  const ui = await readFile(new URL('../../target-assessment-ui.js', import.meta.url), 'utf8')
+  assert.match(ui, /querySelector\('\[data-track\]\.selected'\)/)
+  assert.match(ui, /profile\.track=selectedTrack\(\)\|\|profile\.track/)
+  assert.match(ui, /data-authoritative-track/)
+  assert.match(ui, /ensureTrackField\(form,profile\.track\)/)
+  assert.match(ui, /sessionStorage\.removeItem\(POOL_KEY\)/)
+  assert.match(ui, /Assessment target mismatch/)
+  assert.match(ui, /Assessment question mismatch/)
+  assert.match(ui, /Interview assessment received stale academic target data/)
 })
 
 test('Worker refuses to pretend company-specific generation works without its server secret', async () => {
@@ -101,7 +115,7 @@ test('health advertises company-role generator configuration safely', async () =
 })
 
 test('new browser and Worker modules parse cleanly', () => {
-  for (const file of ['../src/assessment-generator.js','../src/index-v2.js','../../company-assessment-ui.js','../../engine-v4.js']) {
+  for (const file of ['../src/assessment-generator.js','../src/index-v2.js','../../target-assessment-ui.js','../../engine-v5.js']) {
     const filePath = fileURLToPath(new URL(file, import.meta.url))
     const result = spawnSync(process.execPath, ['--check', filePath], { encoding:'utf8' })
     assert.equal(result.status, 0, `${file}: ${result.stderr}`)
