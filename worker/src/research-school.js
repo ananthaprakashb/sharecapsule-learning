@@ -3,6 +3,7 @@ import { buildQueries as buildBaseQueries, rankSources as rankBaseSources, sanit
 const safeText=(value,max=240)=>String(value||'').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max)
 const norm=(value='')=>String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()
 const tokens=(value='')=>[...new Set(norm(value).split(' ').filter((x)=>x.length>2))]
+const acronym=(value='')=>norm(value).split(' ').filter(Boolean).map((word)=>word[0]).join('')
 
 function academicProfile(profile={}){return profile?.track==='academic'}
 function systemLabel(profile={}){return profile.district||profile.educationSystem||profile.board||''}
@@ -11,17 +12,23 @@ function academicTarget(profile={}){return [profile.school,systemLabel(profile),
 
 function educationHostScore(host=''){
   const value=String(host).toLowerCase().replace(/^www\./,'')
-  if(value.endsWith('.gov')||/\.gov\.[a-z]{2,}$/.test(value))return{quality:'Government education source',authorityScore:97}
-  if(value.endsWith('.edu')||/\.edu\.[a-z]{2,}$/.test(value)||/\.ac\.[a-z]{2,}$/.test(value))return{quality:'Education institution source',authorityScore:90}
-  if(/\.k12\.[a-z.]+$/.test(value)||value.includes('.school.'))return{quality:'School / district source',authorityScore:91}
+  if(value.endsWith('.gov')||/\.gov\.[a-z]{2,}$/.test(value))return{kind:'government',quality:'Government standards source',authorityScore:97}
+  if(value.endsWith('.edu')||/\.edu\.[a-z]{2,}$/.test(value)||/\.ac\.[a-z]{2,}$/.test(value))return{kind:'education',quality:'Education institution source',authorityScore:90}
+  if(/\.k12\.[a-z.]+$/.test(value)||value.includes('.school.'))return{kind:'school',quality:'School / district source',authorityScore:91}
   return null
 }
 
 function targetMatches(source,profile){
   const haystack=norm(`${source.title||''} ${source.description||source.snippet||''} ${source.publisher||''} ${source.url||''}`)
-  const groups=[profile.school,systemLabel(profile),profile.curriculumTrack,profile.examName,profile.subject,profile.grade]
+  const groups=[profile.school,systemLabel(profile),profile.curriculumTrack,profile.examName,profile.subject,profile.grade,locationLabel(profile)]
     .map(tokens).filter((group)=>group.length)
   return groups.reduce((score,group)=>score+(group.some((token)=>haystack.includes(token))?1:0),0)
+}
+
+function ownedSystemHost(host,profile){
+  const system=systemLabel(profile),school=profile.school||''
+  const aliases=[...tokens(system),...tokens(school),acronym(system),acronym(school)].filter((value)=>value.length>=4)
+  return aliases.some((value)=>host.includes(value))
 }
 
 export function validateResearchRequest(body){
@@ -71,14 +78,17 @@ export function rankSources(rawSources,request){
     const host=String(source.publisher||'').toLowerCase().replace(/^www\./,'')
     const education=educationHostScore(host)
     const matches=targetMatches(source,request.profile)
+    const systemOwned=ownedSystemHost(host,request.profile)
     let authorityScore=source.authorityScore||35
     let quality=source.quality||'Public web source'
     if(education){authorityScore=Math.max(authorityScore,education.authorityScore);quality=education.quality}
+    if(systemOwned){authorityScore=Math.max(authorityScore,98);quality='Official district source'}
 
     const relevanceScore=Math.min(100,Math.max(source.relevanceScore||0,30+matches*15))
-    const strongTargetMatch=matches>=2
-    const likelyOwned=strongTargetMatch&&(Boolean(education)||tokens(request.profile.school).some((t)=>host.includes(t))||tokens(systemLabel(request.profile)).some((t)=>host.includes(t)))
-    const targetEvidence=Boolean(source.targetEvidence)||likelyOwned
+    const targetEvidence=Boolean(source.targetEvidence)||
+      (systemOwned&&matches>=1)||
+      (education?.kind==='government'&&matches>=1)||
+      ((education?.kind==='education'||education?.kind==='school')&&matches>=2)
     const score=Math.max(source.score||0,Math.round(authorityScore*.48+relevanceScore*.52))
     return{...source,quality,authorityScore,relevanceScore,score,targetEvidence}
   }).sort((a,b)=>b.score-a.score)
