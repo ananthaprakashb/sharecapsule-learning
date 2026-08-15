@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#173d34" />
-  <meta name="description" content="ShareCapsule Prepare builds adaptive academic, interview, campus placement, and local curriculum preparation plans around your target date." />
+  <meta name="description" content="ShareCapsule Prepare builds adaptive school-aware academic, interview, and campus placement preparation plans around your target date." />
   <title>ShareCapsule Prepare</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="/sharecapsule-logo.svg" />
   <link rel="shortcut icon" href="/sharecapsule-logo.svg" />
@@ -16,15 +16,15 @@
   <link rel="stylesheet" href="/campus.css" />
   <link rel="stylesheet" href="/report.css" />
   <link rel="stylesheet" href="/brand.css" />
-  <link rel="stylesheet" href="/srvusd-grade7.css" />
+  <link rel="stylesheet" href="/academic-target.css" />
   <link rel="stylesheet" href="/assessment-session.css" />
   <link rel="stylesheet" href="/company-assessment.css" />
   <script type="importmap">
     {
       "imports": {
-        "./target-model.js": "/target-model-v2.js?v=20260815-0915",
-        "./engine.js": "/engine-v4.js?v=20260815-0915",
-        "./research-api.js": "/research-api-v2.js?v=20260815-0915"
+        "./target-model.js": "/target-model-v2.js?v=20260815-0930",
+        "./engine.js": "/engine-v5.js?v=20260815-0930",
+        "./research-api.js": "/research-api-v2.js?v=20260815-0930"
       }
     }
   </script>
@@ -38,7 +38,7 @@
   </div>
   <script type="module">
     const app = document.querySelector('#app')
-    const build = '20260815-0915'
+    const build = '20260815-0930'
 
     function showBootError(error) {
       console.error('ShareCapsule Prepare failed to start', error)
@@ -60,7 +60,7 @@
       throw error
     }
 
-    for (const moduleName of ['company-assessment-ui.js', 'question-scroll.js', 'assessment-timer.js', 'brand.js', 'srvusd-grade7-ui.js', 'live-research-ui.js', 'report-ui-v2.js']) {
+    for (const moduleName of ['target-assessment-ui.js', 'academic-target-ui.js', 'question-scroll.js', 'assessment-timer.js', 'brand.js', 'live-research-ui.js', 'report-ui-v2.js']) {
       import(`/${moduleName}?v=${build}`).catch((error) => {
         console.error(`Optional module ${moduleName} failed`, error)
       })
