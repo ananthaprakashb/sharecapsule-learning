@@ -7,12 +7,6 @@ const MIN_USABLE_QUESTIONS = 10
 const MIN_GENERATION_BATCH = 5
 const GENERATOR_EXCLUDE_LIMIT = 400
 
-const safeText = (value, max = 240) => String(value || '')
-  .replace(/[\u0000-\u001f]/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, max)
-
 const normalize = (value = '') => String(value || '')
   .toLowerCase()
   .replace(/[^a-z0-9+#.]+/g, ' ')
@@ -189,6 +183,20 @@ export async function getAssessmentQuestions(body, env, { forceResearch = false 
 
   if (freshSaved.length >= request.count) {
     return cachedResponse({ request, bank: existingBank, key, questions: freshSaved.slice(0, request.count), env })
+  }
+
+  if (!env.OPENAI_API_KEY) {
+    if (existingBank && freshSaved.length >= MIN_USABLE_QUESTIONS) {
+      return cachedResponse({
+        request,
+        bank: existingBank,
+        key,
+        questions: freshSaved.slice(0, request.count),
+        env,
+        warning: `Used ${Math.min(freshSaved.length, request.count)} saved questions because new question generation is not configured.`,
+      })
+    }
+    throw new Error('Company-specific question generation is not configured')
   }
 
   const shortage = request.count - freshSaved.length
