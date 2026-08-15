@@ -89,6 +89,7 @@ test('Worker health advertises all-grade school-system-aware academic generation
   assert.match(source,/allGrades:true/)
   assert.match(source,/schoolSystemAware:true/)
   assert.match(source,/schoolSpecificClaimsRequireEvidence:true/)
+  assert.match(source,/questionBankConfigured/)
 })
 
 test('new academic modules parse cleanly on native platform paths',()=>{
