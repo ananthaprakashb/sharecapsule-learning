@@ -50,8 +50,10 @@ test('question-bank identity separates schools and grades',async()=>{
   const base=await questionBankKey(academicRequest)
   const otherSchool=await questionBankKey({...academicRequest,profile:{...academicRequest.profile,school:'Another Middle School'}})
   const otherGrade=await questionBankKey({...academicRequest,profile:{...academicRequest.profile,grade:'Grade 8'}})
+  const otherRegion=await questionBankKey({...academicRequest,profile:{...academicRequest.profile,region:'Texas'}})
   assert.notEqual(base,otherSchool)
   assert.notEqual(base,otherGrade)
+  assert.notEqual(base,otherRegion)
 })
 
 test('full academic bank serves 50 questions without another OpenAI call',async()=>{
@@ -69,6 +71,7 @@ test('browser bootstrap uses generic academic resolver instead of SRVUSD-only UI
   const ui=await readFile(new URL('../../academic-target-ui.js',import.meta.url),'utf8')
   const assessment=await readFile(new URL('../../target-assessment-ui.js',import.meta.url),'utf8')
   const engine=await readFile(new URL('../../engine-v5.js',import.meta.url),'utf8')
+  const report=await readFile(new URL('../../report-ui-v2.js',import.meta.url),'utf8')
   assert.match(index,/academic-target-ui\.js/)
   assert.match(index,/target-assessment-ui\.js/)
   assert.match(index,/engine-v5\.js/)
@@ -76,10 +79,12 @@ test('browser bootstrap uses generic academic resolver instead of SRVUSD-only UI
   assert.match(ui,/Any grade\. Any school or education system\./)
   assert.match(assessment,/track==='academic'/)
   assert.match(engine,/live-academic-target/)
+  assert.match(report,/p\.country,p\.region\|\|p\.state,p\.district,p\.school,p\.grade/)
+  assert.match(report,/\['country','region','grade','subject'/)
 })
 
 test('new academic modules parse cleanly on native platform paths',()=>{
-  for(const file of ['../src/academic-assessment-generator.js','../src/research-school.js','../src/question-bank.js','../../academic-target-ui.js','../../target-assessment-ui.js','../../engine-v5.js']){
+  for(const file of ['../src/academic-assessment-generator.js','../src/research-school.js','../src/question-bank.js','../../academic-target-ui.js','../../target-assessment-ui.js','../../engine-v5.js','../../report-ui-v2.js']){
     const path=fileURLToPath(new URL(file,import.meta.url))
     const result=spawnSync(process.execPath,['--check',path],{encoding:'utf8'})
     assert.equal(result.status,0,`${file}: ${result.stderr}`)
