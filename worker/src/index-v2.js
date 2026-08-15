@@ -1,5 +1,5 @@
 import baseWorker from './index.js'
-import { generateAssessmentQuestions } from './assessment-generator.js'
+import { getAssessmentQuestions, questionBankConfig } from './question-bank.js'
 
 const jsonHeaders = { 'Content-Type':'application/json; charset=utf-8', 'X-Content-Type-Options':'nosniff' }
 
@@ -53,6 +53,9 @@ async function augmentedHealth(request, env, ctx) {
       maxQuestionsPerSession: 50,
       evidenceCacheDays: 30,
       originalPracticeQuestionsOnly: true,
+      questionBankConfigured: Boolean(env.QUESTION_BANK),
+      questionBankTtlDays: Number(env.QUESTION_BANK_TTL_DAYS || questionBankConfig.defaultTtlDays),
+      maxSavedQuestionsPerTarget: questionBankConfig.maxQuestionsPerTarget,
     },
   }, 200, request, env, { 'Cache-Control':'no-store' })
 }
@@ -67,23 +70,18 @@ export default {
     if (request.method === 'POST' && url.pathname === '/v1/assessment/questions') {
       const rejected = rejectRequest(request, env)
       if (rejected) return rejected
-      if (!env.OPENAI_API_KEY) {
-        return responseJson({
-          error:'Company-specific question generation is not configured',
-          code:'QUESTION_GENERATOR_NOT_CONFIGURED',
-        }, 503, request, env, { 'Cache-Control':'no-store' })
-      }
       try {
         const body = await readJson(request)
-        const result = await generateAssessmentQuestions(body, env, { forceResearch:url.searchParams.get('refresh') === '1' })
+        const result = await getAssessmentQuestions(body, env, { forceResearch:url.searchParams.get('refresh') === '1' })
         return responseJson(result, 200, request, env, { 'Cache-Control':'no-store' })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Question generation failed'
         const invalid = /required|must be|between|Too many|too large|Request body|supports interview/.test(message)
+        const notConfigured = /question generation is not configured/i.test(message)
         return responseJson({
           error:message,
-          code:invalid ? 'INVALID_ASSESSMENT_REQUEST' : 'QUESTION_GENERATION_FAILED',
-        }, invalid ? 400 : 502, request, env, { 'Cache-Control':'no-store' })
+          code:invalid ? 'INVALID_ASSESSMENT_REQUEST' : notConfigured ? 'QUESTION_GENERATOR_NOT_CONFIGURED' : 'QUESTION_GENERATION_FAILED',
+        }, invalid ? 400 : notConfigured ? 503 : 502, request, env, { 'Cache-Control':'no-store' })
       }
     }
 

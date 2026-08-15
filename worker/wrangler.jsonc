@@ -10,9 +10,15 @@
       "custom_domain": true
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "QUESTION_BANK"
+    }
+  ],
   "vars": {
     "ALLOWED_ORIGINS": "https://learning.sharecapsule.app,https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080",
-    "OPENAI_MODEL": "gpt-5-mini"
+    "OPENAI_MODEL": "gpt-5-mini",
+    "QUESTION_BANK_TTL_DAYS": "180"
   },
   "observability": {
     "enabled": true
