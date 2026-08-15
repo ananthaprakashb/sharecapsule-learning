@@ -81,6 +81,18 @@ test('unified frontend still uses live company pool rather than relabeling stati
   assert.match(index, /target-assessment-ui\.js/)
 })
 
+test('selected interview track overrides stale academic browser state and rejects cross-track payloads', async () => {
+  const ui = await readFile(new URL('../../target-assessment-ui.js', import.meta.url), 'utf8')
+  assert.match(ui, /querySelector\('\[data-track\]\.selected'\)/)
+  assert.match(ui, /profile\.track=selectedTrack\(\)\|\|profile\.track/)
+  assert.match(ui, /data-authoritative-track/)
+  assert.match(ui, /ensureTrackField\(form,profile\.track\)/)
+  assert.match(ui, /sessionStorage\.removeItem\(POOL_KEY\)/)
+  assert.match(ui, /Assessment target mismatch/)
+  assert.match(ui, /Assessment question mismatch/)
+  assert.match(ui, /Interview assessment received stale academic target data/)
+})
+
 test('Worker refuses to pretend company-specific generation works without its server secret', async () => {
   const response = await worker.fetch(new Request('https://api.prepare.sharecapsule.app/v1/assessment/questions', {
     method:'POST',
