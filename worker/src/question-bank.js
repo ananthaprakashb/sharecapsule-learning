@@ -2,7 +2,7 @@ import { generateAssessmentQuestions, sanitizeAssessmentRequest } from './assess
 
 const BANK_VERSION = 1
 const DEFAULT_TTL_DAYS = 180
-const MAX_BANK_QUESTIONS = 500
+const MAX_BANK_QUESTIONS = 400
 const MIN_USABLE_QUESTIONS = 10
 const MIN_GENERATION_BATCH = 5
 const GENERATOR_EXCLUDE_LIMIT = 400
@@ -121,8 +121,12 @@ async function readBank(env, key) {
 async function writeBank(env, key, value) {
   const kv = bankBinding(env)
   if (!kv) return false
-  await kv.put(key, JSON.stringify(value), { expirationTtl: ttlDays(env) * 24 * 60 * 60 })
-  return true
+  try {
+    await kv.put(key, JSON.stringify(value), { expirationTtl: ttlDays(env) * 24 * 60 * 60 })
+    return true
+  } catch {
+    return false
+  }
 }
 
 function freshSavedQuestions(bank, request) {
