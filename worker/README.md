@@ -62,7 +62,7 @@ Flow:
 
 The server-side bank identity intentionally contains target needs, not learner answers: company/companies, role, level or campus context, normalized skills/languages, and the competency names. Diagnostic answers and report contents are not stored in this bank.
 
-Each target bank can retain up to 500 deduplicated generated questions. `QUESTION_BANK_TTL_DAYS` defaults to 180 days. When a full fresh set is already stored, the endpoint can serve the assessment without calling OpenAI at all. If generation is temporarily unavailable but at least 10 fresh saved questions remain, Prepare can serve that saved inventory instead of failing the assessment entirely.
+Each target bank can retain up to 400 deduplicated generated questions. `QUESTION_BANK_TTL_DAYS` defaults to 180 days. When a full fresh set is already stored, the endpoint can serve the assessment without calling OpenAI at all. If generation is temporarily unavailable but at least 10 fresh saved questions remain, Prepare can serve that saved inventory instead of failing the assessment entirely.
 
 The service does **not** copy distinctive wording from candidate reports and does not use leaked, confidential, NDA-protected, private, or illicitly obtained interview material. Public reports are treated as secondary evidence about recurring themes; official company sources are stronger evidence for role requirements and published interview process.
 
