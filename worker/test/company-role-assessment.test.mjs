@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { sanitizeAssessmentRequest, validateAssessmentRequest } from '../src/assessment-generator.js'
 import worker from '../src/index-v2.js'
 
@@ -101,7 +102,8 @@ test('health advertises company-role generator configuration safely', async () =
 
 test('new browser and Worker modules parse cleanly', () => {
   for (const file of ['../src/assessment-generator.js','../src/index-v2.js','../../company-assessment-ui.js','../../engine-v4.js']) {
-    const result = spawnSync(process.execPath, ['--check', new URL(file, import.meta.url).pathname], { encoding:'utf8' })
+    const filePath = fileURLToPath(new URL(file, import.meta.url))
+    const result = spawnSync(process.execPath, ['--check', filePath], { encoding:'utf8' })
     assert.equal(result.status, 0, `${file}: ${result.stderr}`)
   }
 })
