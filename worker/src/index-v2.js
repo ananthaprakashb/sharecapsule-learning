@@ -45,18 +45,19 @@ async function augmentedHealth(request, env, ctx) {
   const response = await baseWorker.fetch(request, env, ctx)
   if (!response.ok) return response
   const body = await response.json().catch(() => ({}))
+  const shared={
+    configured:Boolean(env.OPENAI_API_KEY),
+    model:env.OPENAI_MODEL||'gpt-5-mini',
+    maxQuestionsPerSession:50,
+    evidenceCacheDays:30,
+    questionBankConfigured:Boolean(env.QUESTION_BANK),
+    questionBankTtlDays:Number(env.QUESTION_BANK_TTL_DAYS||questionBankConfig.defaultTtlDays),
+    maxSavedQuestionsPerTarget:questionBankConfig.maxQuestionsPerTarget,
+  }
   return responseJson({
     ...body,
-    companyRoleQuestionGeneration: {
-      configured: Boolean(env.OPENAI_API_KEY),
-      model: env.OPENAI_MODEL || 'gpt-5-mini',
-      maxQuestionsPerSession: 50,
-      evidenceCacheDays: 30,
-      originalPracticeQuestionsOnly: true,
-      questionBankConfigured: Boolean(env.QUESTION_BANK),
-      questionBankTtlDays: Number(env.QUESTION_BANK_TTL_DAYS || questionBankConfig.defaultTtlDays),
-      maxSavedQuestionsPerTarget: questionBankConfig.maxQuestionsPerTarget,
-    },
+    companyRoleQuestionGeneration:{...shared,originalPracticeQuestionsOnly:true},
+    academicSchoolQuestionGeneration:{...shared,allGrades:true,schoolSystemAware:true,schoolSpecificClaimsRequireEvidence:true},
   }, 200, request, env, { 'Cache-Control':'no-store' })
 }
 
@@ -76,7 +77,7 @@ export default {
         return responseJson(result, 200, request, env, { 'Cache-Control':'no-store' })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Question generation failed'
-        const invalid = /required|must be|between|Too many|too large|Request body|supports interview/.test(message)
+        const invalid = /required|requires|must be|between|Too many|too large|Request body|supports interview|requires academic track/.test(message)
         const notConfigured = /question generation is not configured/i.test(message)
         return responseJson({
           error:message,
