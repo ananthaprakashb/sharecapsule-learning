@@ -6,7 +6,7 @@ const defaultApiBase = location.hostname === 'localhost' || location.hostname ==
 const apiBase = String(window.PREPARE_API_BASE || defaultApiBase).replace(/\/$/, '')
 const POOL_KEY = 'prepare-company-question-pool-v1'
 const HISTORY_KEY = 'prepare-live-question-history-v1'
-const MAX_HISTORY = 500
+const MAX_HISTORY = 400
 
 const norm = (value='') => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
 const listKey = (value='') => [...new Set(String(value||'').split(/[,;\n]/).map(norm).filter(Boolean))].sort().join('|')
@@ -102,7 +102,7 @@ async function requestQuestions(profile,model,key){
       gaps:[],
       count:50,
       sessionSeed:crypto.randomUUID(),
-      excludeFingerprints:readHistory(key),
+      excludeFingerprints:readHistory(key).slice(-MAX_HISTORY),
     }),
   })
   const payload=await response.json().catch(()=>({}))
