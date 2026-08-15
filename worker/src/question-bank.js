@@ -1,4 +1,5 @@
 import { generateAssessmentQuestions, sanitizeAssessmentRequest } from './assessment-generator.js'
+import { generateAcademicAssessmentQuestions, sanitizeAcademicAssessmentRequest } from './academic-assessment-generator.js'
 
 const BANK_VERSION = 1
 const DEFAULT_TTL_DAYS = 180
@@ -36,8 +37,27 @@ function ttlDays(env) {
   return Number.isFinite(value) ? Math.min(365, Math.max(30, Math.round(value))) : DEFAULT_TTL_DAYS
 }
 
+function sanitizeAny(body){
+  return body?.profile?.track==='academic' ? sanitizeAcademicAssessmentRequest(body) : sanitizeAssessmentRequest(body)
+}
+
 function identityFromRequest(request) {
-  const competencyNames = [...new Set(request.competencies.map((item) => normalize(item.name)).filter(Boolean))].sort()
+  const competencyNames = [...new Set((request.competencies||[]).map((item) => normalize(item.name)).filter(Boolean))].sort()
+  if (request.profile.track === 'academic') {
+    return {
+      version: BANK_VERSION,
+      track: 'academic',
+      country: normalize(request.profile.country),
+      region: normalize(request.profile.region),
+      district: normalize(request.profile.district),
+      school: normalize(request.profile.school),
+      grade: normalize(request.profile.grade),
+      subject: normalize(request.profile.subject),
+      curriculumTrack: normalize(request.profile.curriculumTrack),
+      examName: normalize(request.profile.examName),
+      topics: normalizedList(request.profile.topics),
+    }
+  }
   if (request.profile.track === 'campus') {
     return {
       version: BANK_VERSION,
@@ -64,7 +84,7 @@ function identityFromRequest(request) {
 }
 
 export async function questionBankKey(body) {
-  const request = sanitizeAssessmentRequest(body)
+  const request = sanitizeAny(body)
   const digest = await sha256(JSON.stringify(identityFromRequest(request)))
   return `assessment-bank:v${BANK_VERSION}:${digest}`
 }
@@ -135,6 +155,7 @@ function cachedResponse({ request, bank, key, questions, env, warning = '' }) {
   return {
     version: 2,
     target: bank.target,
+    model: bank.model || null,
     generatedAt: bank.generatedAt || bank.updatedAt || new Date().toISOString(),
     generator: {
       configured: Boolean(env.OPENAI_API_KEY),
@@ -146,11 +167,7 @@ function cachedResponse({ request, bank, key, questions, env, warning = '' }) {
     questions,
     requestedCount: request.count,
     generatedCount: questions.length,
-    policy: bank.policy || {
-      originalPracticeQuestions: true,
-      verbatimCandidateQuestions: false,
-      confidentialOrLeakedMaterial: false,
-    },
+    policy: bank.policy || { originalPracticeQuestions: true },
     warnings: warning ? [warning] : [],
     bank: {
       configured: Boolean(bankBinding(env)),
@@ -175,8 +192,17 @@ function generationBody(body, request, bankQuestions, count) {
   }
 }
 
+async function generateForTrack(body,request,env,options){
+  if(request.profile.track==='academic')return generateAcademicAssessmentQuestions(body,env,options)
+  return generateAssessmentQuestions(body,env,options)
+}
+
+function unavailableMessage(track){
+  return track==='academic'?'Academic question generation is not configured':'Company-specific question generation is not configured'
+}
+
 export async function getAssessmentQuestions(body, env, { forceResearch = false } = {}) {
-  const request = sanitizeAssessmentRequest(body)
+  const request = sanitizeAny(body)
   const key = await questionBankKey(body)
   const existingBank = await readBank(env, key)
   const freshSaved = freshSavedQuestions(existingBank, request)
@@ -188,15 +214,11 @@ export async function getAssessmentQuestions(body, env, { forceResearch = false 
   if (!env.OPENAI_API_KEY) {
     if (existingBank && freshSaved.length >= MIN_USABLE_QUESTIONS) {
       return cachedResponse({
-        request,
-        bank: existingBank,
-        key,
-        questions: freshSaved.slice(0, request.count),
-        env,
+        request, bank: existingBank, key, questions: freshSaved.slice(0, request.count), env,
         warning: `Used ${Math.min(freshSaved.length, request.count)} saved questions because new question generation is not configured.`,
       })
     }
-    throw new Error('Company-specific question generation is not configured')
+    throw new Error(unavailableMessage(request.profile.track))
   }
 
   const shortage = request.count - freshSaved.length
@@ -204,19 +226,14 @@ export async function getAssessmentQuestions(body, env, { forceResearch = false 
 
   let generated
   try {
-    generated = await generateAssessmentQuestions(
+    generated = await generateForTrack(
       generationBody(body, request, existingBank?.questions || [], generationCount),
-      env,
-      { forceResearch },
+      request, env, { forceResearch },
     )
   } catch (error) {
     if (existingBank && freshSaved.length >= MIN_USABLE_QUESTIONS) {
       return cachedResponse({
-        request,
-        bank: existingBank,
-        key,
-        questions: freshSaved.slice(0, request.count),
-        env,
+        request, bank: existingBank, key, questions: freshSaved.slice(0, request.count), env,
         warning: `Used ${Math.min(freshSaved.length, request.count)} saved questions because new question generation is temporarily unavailable.`,
       })
     }
@@ -230,6 +247,7 @@ export async function getAssessmentQuestions(body, env, { forceResearch = false 
     version: BANK_VERSION,
     identity: identityFromRequest(request),
     target: generated.target || existingBank?.target,
+    model: generated.model || existingBank?.model || null,
     generator: generated.generator || existingBank?.generator,
     research: generated.research || existingBank?.research || null,
     policy: generated.policy || existingBank?.policy || null,
