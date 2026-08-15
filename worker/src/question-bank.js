@@ -5,6 +5,7 @@ const DEFAULT_TTL_DAYS = 180
 const MAX_BANK_QUESTIONS = 500
 const MIN_USABLE_QUESTIONS = 10
 const MIN_GENERATION_BATCH = 5
+const GENERATOR_EXCLUDE_LIMIT = 400
 
 const safeText = (value, max = 240) => String(value || '')
   .replace(/[\u0000-\u001f]/g, ' ')
@@ -172,7 +173,7 @@ function generationBody(body, request, bankQuestions, count) {
     ...body,
     count,
     sessionSeed: request.sessionSeed,
-    excludeFingerprints: [...new Set([...request.excludeFingerprints, ...prior])].slice(-500),
+    excludeFingerprints: [...new Set([...request.excludeFingerprints, ...prior])].slice(-GENERATOR_EXCLUDE_LIMIT),
   }
 }
 
