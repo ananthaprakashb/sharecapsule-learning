@@ -83,6 +83,14 @@ test('browser bootstrap uses generic academic resolver instead of SRVUSD-only UI
   assert.match(report,/\['country','region','grade','subject'/)
 })
 
+test('Worker health advertises all-grade school-system-aware academic generation',async()=>{
+  const source=await readFile(new URL('../src/index-v2.js',import.meta.url),'utf8')
+  assert.match(source,/academicSchoolQuestionGeneration/)
+  assert.match(source,/allGrades:true/)
+  assert.match(source,/schoolSystemAware:true/)
+  assert.match(source,/schoolSpecificClaimsRequireEvidence:true/)
+})
+
 test('new academic modules parse cleanly on native platform paths',()=>{
   for(const file of ['../src/academic-assessment-generator.js','../src/research-school.js','../src/question-bank.js','../../academic-target-ui.js','../../target-assessment-ui.js','../../engine-v5.js','../../report-ui-v2.js']){
     const path=fileURLToPath(new URL(file,import.meta.url))
