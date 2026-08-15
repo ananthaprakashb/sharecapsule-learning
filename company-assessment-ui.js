@@ -9,6 +9,7 @@ const HISTORY_KEY = 'prepare-live-question-history-v1'
 const MAX_HISTORY = 500
 
 const norm = (value='') => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+const listKey = (value='') => [...new Set(String(value||'').split(/[,;\n]/).map(norm).filter(Boolean))].sort().join('|')
 
 function readProfile(){
   try{return JSON.parse(localStorage.getItem('prepare-profile')||'{}')}catch{return{}}
@@ -21,12 +22,12 @@ function activeProfile(form){
 }
 
 function companiesKey(value=''){
-  return String(value||'').split(/[,;\n]/).map(norm).filter(Boolean).sort().join('|')
+  return listKey(value)
 }
 
 function targetKey(profile){
-  if(profile.track==='campus') return ['campus',profile.degree,profile.branch,profile.semester,profile.graduationYear,companiesKey(profile.companies),profile.programmingLanguages].map(norm).join('|')
-  return ['interview',profile.company,profile.role,profile.level,profile.skills].map(norm).join('|')
+  if(profile.track==='campus') return ['campus',profile.degree,profile.branch,profile.semester,profile.graduationYear,companiesKey(profile.companies),listKey(profile.programmingLanguages),listKey(profile.skills)].map(norm).join('|')
+  return ['interview',profile.company,profile.role,profile.level,listKey(profile.skills)].map(norm).join('|')
 }
 
 function readHistory(key){
@@ -81,7 +82,7 @@ function setBusy(form,busy){
   if(button){
     button.disabled=busy
     if(!button.dataset.originalText)button.dataset.originalText=button.innerHTML
-    button.innerHTML=busy?'Researching company & role…':button.dataset.originalText
+    button.innerHTML=busy?'Loading role-specific questions…':button.dataset.originalText
   }
 }
 
@@ -111,6 +112,23 @@ async function requestQuestions(profile,model,key){
   return {...payload,questions}
 }
 
+function preparedStatus(result){
+  const count=result.questions.length
+  const target=result.target?.label||'this target'
+  const bank=result.bank
+  if(!bank)return `${count} original questions prepared for ${target} from current public evidence.`
+  if(bank.configured&&bank.generatedNow===0){
+    return `${count} questions loaded from the saved ${target} question bank — no new AI question generation used.`
+  }
+  if(bank.configured&&bank.servedFromBank>0){
+    return `${count} questions ready for ${target}: ${bank.servedFromBank} reused from the saved bank and ${bank.generatedNow} newly generated and saved.`
+  }
+  if(bank.configured&&bank.persisted){
+    return `${count} new questions prepared for ${target} and saved to the reusable question bank.`
+  }
+  return `${count} questions prepared for ${target}. Persistent question-bank storage is not available yet.`
+}
+
 async function prepare(form,event){
   const profile=activeProfile(form)
   if(!['interview','campus'].includes(profile.track))return false
@@ -124,7 +142,7 @@ async function prepare(form,event){
   localStorage.setItem('prepare-profile',JSON.stringify(profile))
   const key=targetKey(profile)
   setBusy(form,true)
-  setStatus(form,'Researching current public interview evidence and preparing role-specific questions…')
+  setStatus(form,'Checking the saved question bank, then researching/generating only if more questions are needed…')
   try{
     const model=buildTargetModel(profile)
     const result=await requestQuestions(profile,model,key)
@@ -135,10 +153,11 @@ async function prepare(form,event){
       target:result.target,
       research:result.research,
       policy:result.policy,
+      bank:result.bank,
       questions:result.questions,
     }))
     remember(key,result.questions.map((question)=>question.fingerprint).filter(Boolean))
-    setStatus(form,`${result.questions.length} original questions prepared for ${result.target?.label||'this target'} from current public evidence.`)
+    setStatus(form,preparedStatus(result))
     form.dataset.liveAssessmentReady='1'
     setBusy(form,false)
     form.requestSubmit()
