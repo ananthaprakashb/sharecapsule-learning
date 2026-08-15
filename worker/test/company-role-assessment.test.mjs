@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { sanitizeAssessmentRequest, validateAssessmentRequest } from '../src/assessment-generator.js'
+import worker from '../src/index-v2.js'
 
 const interviewRequest = {
   profile: {
@@ -21,6 +22,11 @@ const interviewRequest = {
   sessionSeed: 'test-seed',
   excludeFingerprints: ['abc123'],
 }
+
+const env = {
+  ALLOWED_ORIGINS:'https://learning.sharecapsule.app',
+}
+const ctx = { waitUntil(){} }
 
 test('company-specific assessment requires company and role for interview track', () => {
   assert.equal(validateAssessmentRequest(interviewRequest), true)
@@ -64,10 +70,33 @@ test('frontend uses live company pool rather than relabeling static questions', 
   const index = await readFile(new URL('../../index.html', import.meta.url), 'utf8')
   assert.match(ui, /\/v1\/assessment\/questions/)
   assert.match(ui, /excludeFingerprints/)
+  assert.match(ui, /count:50/)
   assert.match(engine, /generation==='live-company-role'/)
   assert.match(engine, /prepare-company-question-pool-v1/)
+  assert.match(engine, /live\.questions\.slice\(0,50\)/)
   assert.match(index, /engine-v4\.js/)
   assert.match(index, /company-assessment-ui\.js/)
+})
+
+test('Worker refuses to pretend company-specific generation works without its server secret', async () => {
+  const response = await worker.fetch(new Request('https://api.prepare.sharecapsule.app/v1/assessment/questions', {
+    method:'POST',
+    headers:{ Origin:'https://learning.sharecapsule.app', 'Content-Type':'application/json' },
+    body:JSON.stringify(interviewRequest),
+  }), env, ctx)
+  const body = await response.json()
+  assert.equal(response.status, 503)
+  assert.equal(body.code, 'QUESTION_GENERATOR_NOT_CONFIGURED')
+})
+
+test('health advertises company-role generator configuration safely', async () => {
+  const response = await worker.fetch(new Request('https://api.prepare.sharecapsule.app/health', {
+    headers:{ Origin:'https://learning.sharecapsule.app' },
+  }), env, ctx)
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.companyRoleQuestionGeneration.configured, false)
+  assert.equal(body.companyRoleQuestionGeneration.maxQuestionsPerSession, 50)
 })
 
 test('new browser and Worker modules parse cleanly', () => {
