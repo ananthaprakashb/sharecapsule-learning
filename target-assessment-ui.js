@@ -9,7 +9,9 @@ const norm=(value='')=>String(value||'').trim().toLowerCase().replace(/\s+/g,' '
 const listKey=(value='')=>[...new Set(String(value||'').split(/[,;\n]/).map(norm).filter(Boolean))].sort().join('|')
 
 function readProfile(){try{return JSON.parse(localStorage.getItem('prepare-profile')||'{}')}catch{return{}}}
-function activeProfile(form){const profile={...readProfile()};for(const[key,value]of new FormData(form))profile[key]=value;return profile}
+function selectedTrack(){return document.querySelector('[data-track].selected')?.dataset.track||''}
+function activeProfile(form){const profile={...readProfile()};for(const[key,value]of new FormData(form))profile[key]=value;profile.track=selectedTrack()||profile.track;return profile}
+function ensureTrackField(form,track){let field=form.querySelector('input[name="track"][data-authoritative-track]');if(!field){field=document.createElement('input');field.type='hidden';field.name='track';field.dataset.authoritativeTrack='';form.prepend(field)}field.value=track}
 function targetKey(profile){
   if(profile.track==='academic')return['academic',profile.country,profile.region,profile.district,profile.school,profile.grade,profile.subject,profile.curriculumTrack,profile.examName,listKey(profile.topics)].map(norm).join('|')
   if(profile.track==='campus')return['campus',profile.degree,profile.branch,profile.semester,profile.graduationYear,listKey(profile.companies),listKey(profile.programmingLanguages),listKey(profile.skills)].map(norm).join('|')
@@ -28,6 +30,13 @@ function statusNode(form){let node=form.querySelector('[data-live-assessment-sta
 function setStatus(form,message,bad=false){const node=statusNode(form);if(node.textContent!==message)node.textContent=message;node.classList.toggle('bad',bad)}
 function setBusy(form,busy,track){form.dataset.liveAssessmentLoading=busy?'1':'0';const button=form.querySelector('button.primary-button');if(button){button.disabled=busy;if(!button.dataset.originalText)button.dataset.originalText=button.innerHTML;button.innerHTML=busy?(track==='academic'?'Resolving curriculum & questions…':'Loading target-specific questions…'):button.dataset.originalText}}
 function validQuestion(question){return question&&typeof question.id==='string'&&typeof question.prompt==='string'&&Array.isArray(question.options)&&question.options.length===4&&Number.isInteger(question.answer)&&question.answer>=0&&question.answer<4&&typeof question.competency==='string'}
+function assertTrackIsolation(profile,payload,questions){
+  const returnedTrack=String(payload?.target?.track||payload?.model?.track||'').trim()
+  if(returnedTrack&&returnedTrack!==profile.track)throw new Error(`Assessment target mismatch: expected ${profile.track}, received ${returnedTrack}`)
+  const mismatched=questions.find((question)=>question.track&&question.track!==profile.track)
+  if(mismatched)throw new Error(`Assessment question mismatch: ${profile.track} target received ${mismatched.track} content`)
+  if(profile.track==='interview'&&(payload?.model?.label||payload?.target?.label||'').toLowerCase().includes('grade 7'))throw new Error('Interview assessment received stale academic target data. Please retry the role target.')
+}
 
 async function requestQuestions(profile,model,key){
   const response=await fetch(`${apiBase}/v1/assessment/questions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:activeTrackProfile(profile),competencies:(model?.competencies||[]).map(({name,weight,rationale})=>({name,weight,rationale})),gaps:[],count:50,sessionSeed:crypto.randomUUID(),excludeFingerprints:readHistory(key).slice(-MAX_HISTORY)})})
@@ -35,6 +44,7 @@ async function requestQuestions(profile,model,key){
   if(!response.ok)throw new Error(payload.error||`Target-specific assessment failed (${response.status})`)
   const questions=(payload.questions||[]).filter(validQuestion)
   if(questions.length<10)throw new Error('Target-specific assessment returned too few usable questions')
+  assertTrackIsolation(profile,payload,questions)
   return{...payload,questions}
 }
 
@@ -51,7 +61,7 @@ async function prepare(form,event){
   const profile=activeProfile(form)
   if(!['academic','interview','campus'].includes(profile.track))return false
   if(form.dataset.liveAssessmentReady==='1'){delete form.dataset.liveAssessmentReady;return false}
-  event.preventDefault();event.stopImmediatePropagation();localStorage.setItem('prepare-profile',JSON.stringify(profile))
+  event.preventDefault();event.stopImmediatePropagation();ensureTrackField(form,profile.track);sessionStorage.removeItem(POOL_KEY);localStorage.setItem('prepare-profile',JSON.stringify(profile))
   const key=targetKey(profile);setBusy(form,true,profile.track)
   setStatus(form,profile.track==='academic'?'Checking the saved question bank, resolving current curriculum/standards evidence, and generating only missing questions…':'Checking the saved question bank, then researching/generating only if more questions are needed…')
   try{
