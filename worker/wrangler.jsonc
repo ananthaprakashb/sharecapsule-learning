@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "sharecapsule-prepare-research",
-  "main": "src/index.js",
+  "main": "src/index-v2.js",
   "compatibility_date": "2026-08-10",
   "workers_dev": true,
   "routes": [
@@ -11,10 +11,8 @@
     }
   ],
   "vars": {
-    "ALLOWED_ORIGINS": "https://learning.sharecapsule.app,https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080"
-  },
-  "secrets": {
-    "required": ["BRAVE_SEARCH_API_KEY"]
+    "ALLOWED_ORIGINS": "https://learning.sharecapsule.app,https://prepare.sharecapsule.app,http://localhost:8000,http://localhost:8080",
+    "OPENAI_MODEL": "gpt-5-mini"
   },
   "observability": {
     "enabled": true
